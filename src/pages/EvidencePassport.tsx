@@ -39,11 +39,22 @@ export default function EvidencePassport({ caseId, navigate }: Props) {
           <div className="text-[9px] font-mono-data text-zinc-600">Tamper-evident prediction record — Prototype only · Not court-admissible</div>
         </div>
         <div className="flex items-center gap-2">
+          <select
+            value={caseData.id}
+            onChange={e => navigate('evidence', e.target.value)}
+            className="bg-zinc-900 border border-zinc-700 hover:border-zinc-500 rounded px-2.5 py-1 text-xs font-mono-data text-zinc-100 font-bold focus:outline-none cursor-pointer"
+          >
+            {CASES.map(c => (
+              <option key={c.id} value={c.id}>
+                {c.caseNumber} — {c.fraudType} (₹{(c.reportedAmount / 100000).toFixed(1)}L)
+              </option>
+            ))}
+          </select>
           <button
             onClick={() => navigate('cases', caseData.id)}
-            className="text-[9px] font-mono-data text-zinc-500 border border-zinc-800 px-3 py-1.5 rounded hover:border-zinc-600 transition-colors"
+            className="text-[9px] font-mono-data text-zinc-400 border border-zinc-700 px-3 py-1.5 rounded hover:border-zinc-500 hover:text-zinc-200 transition-colors"
           >
-            ← CASE
+            VIEW CASE
           </button>
           <button
             onClick={() => setGenerated(true)}

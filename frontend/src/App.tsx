@@ -307,14 +307,14 @@ export default function App() {
   const demoTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   function navigate(p: string, id?: string) {
+    if (id) {
+      setSelectedCaseId(id)
+    } else if (!selectedCaseId) {
+      setSelectedCaseId(DEMO_CASE.id)
+    }
+
     if (p === 'cases' && id) {
-      setSelectedCaseId(id)
       setPage('case')
-    } else if (p === 'evidence' && id) {
-      setSelectedCaseId(id)
-      setPage('evidence')
-    } else if (p === 'graph' || p === 'predictions') {
-      setPage('cases')
     } else if (p === 'new-case') {
       setShowNewCase(true)
     } else {
@@ -394,7 +394,19 @@ export default function App() {
       case 'cases':
         return <Cases navigate={navigate} selectedId={selectedCaseId} />
       case 'case':
-        return <CaseIntelligence caseId={selectedCaseId} navigate={navigate} demoStep={demoStep} demoRunning={demoRunning} />
+      case 'graph':
+      case 'predictions':
+      case 'intervention':
+      case 'feedback':
+        return (
+          <CaseIntelligence
+            caseId={selectedCaseId || DEMO_CASE.id}
+            navigate={navigate}
+            demoStep={demoStep}
+            demoRunning={demoRunning}
+            activeSection={page === 'case' ? 'overview' : page}
+          />
+        )
       case 'map':
         return <MapPage navigate={navigate} />
       case 'alerts':
@@ -404,33 +416,7 @@ export default function App() {
       case 'audit':
         return <AuditLog />
       case 'evidence':
-        return <EvidencePassport caseId={selectedCaseId} navigate={navigate} />
-      case 'feedback':
-        return (
-          <div className="p-8 flex flex-col items-center justify-center h-full gap-4">
-            <div className="font-rajdhani font-700 text-zinc-400 tracking-wider text-lg">FEEDBACK LOOP</div>
-            <p className="text-[11px] text-zinc-600 text-center max-w-sm">
-              Outcome feedback is collected via the Case Intelligence View → Officer Actions → Record Outcome panel.
-              Navigate to an active case and use the "HIT / PARTIAL / MISS" buttons to log outcomes.
-            </p>
-            <button onClick={() => navigate('cases', DEMO_CASE.id)} className="text-[10px] font-mono-data text-zinc-400 border border-zinc-700 px-3 py-1.5 rounded hover:border-zinc-500 transition-colors">
-              VIEW DEMO CASE SNTL-2026-0042
-            </button>
-          </div>
-        )
-      case 'intervention':
-        return (
-          <div className="p-8 flex flex-col items-center justify-center h-full gap-4">
-            <div className="font-rajdhani font-700 text-zinc-400 tracking-wider text-lg">INTERVENTION OPTIMIZER</div>
-            <p className="text-[11px] text-zinc-600 text-center max-w-sm">
-              Intervention recommendations are shown in the Case Intelligence View.
-              Select a case to view ranked intervention priorities.
-            </p>
-            <button onClick={() => navigate('cases', DEMO_CASE.id)} className="text-[10px] font-mono-data text-zinc-400 border border-zinc-700 px-3 py-1.5 rounded hover:border-zinc-500 transition-colors">
-              VIEW INTERVENTION IN CASE
-            </button>
-          </div>
-        )
+        return <EvidencePassport caseId={selectedCaseId || DEMO_CASE.id} navigate={navigate} />
       case 'admin':
         return (
           <div className="p-6 space-y-4 overflow-y-auto">
@@ -474,7 +460,7 @@ export default function App() {
     }
   }
 
-  const sidebarPage = page === 'case' || page === 'evidence' ? 'cases' : page as any
+  const sidebarPage = (page === 'landing' ? 'dashboard' : page) as any
 
   return (
     <div className="h-screen flex flex-col bg-zinc-950 overflow-hidden">

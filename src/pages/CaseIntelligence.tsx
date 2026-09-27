@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import {
   AlertTriangle, CheckCircle2, XCircle, ChevronUp, ArrowRight, Shield,
   MapPin, Clock, DollarSign, Brain, Zap, BarChart2, User, FileText,
@@ -13,6 +13,7 @@ interface Props {
   navigate: (page: string, id?: string) => void
   demoStep: number
   demoRunning: boolean
+  activeSection?: string
 }
 
 // ----------------------------------------------------------------------
@@ -1043,7 +1044,7 @@ function OutcomeComparisonCard({
 // ----------------------------------------------------------------------
 // Main Page Component
 // ----------------------------------------------------------------------
-export default function CaseIntelligence({ caseId, navigate, demoStep, demoRunning }: Props) {
+export default function CaseIntelligence({ caseId, navigate, demoStep, demoRunning, activeSection }: Props) {
   const [activeTab, setActiveTab] = useState<'graph' | 'transactions'>('graph')
   const [selectedNode, setSelectedNode] = useState<GraphNode | null>(null)
   const [showVerificationModal, setShowVerificationModal] = useState(false)
@@ -1059,7 +1060,7 @@ export default function CaseIntelligence({ caseId, navigate, demoStep, demoRunni
   const showShap = demoRunning ? demoStep >= 7 : true
   const showAlert = demoRunning ? demoStep >= 8 : true
   const showAction = demoRunning ? demoStep >= 9 : true
-  const showOutcome = demoRunning ? demoStep >= 10 : true
+  const showOutcome = (demoRunning ? demoStep >= 10 : true) || activeSection === 'feedback'
 
   const isActioned = officerDecision !== null || !!alert?.officerAction
 
@@ -1068,38 +1069,85 @@ export default function CaseIntelligence({ caseId, navigate, demoStep, demoRunni
     setShowVerificationModal(false)
   }
 
+  useEffect(() => {
+    if (!activeSection || activeSection === 'overview' || activeSection === 'case') return
+    const timer = setTimeout(() => {
+      if (activeSection === 'graph') {
+        setActiveTab('graph')
+        document.getElementById('graph-section')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+      } else if (activeSection === 'predictions') {
+        document.getElementById('prediction-card')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+      } else if (activeSection === 'intervention') {
+        document.getElementById('intervention-panel')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+      } else if (activeSection === 'feedback') {
+        document.getElementById('outcome-panel')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+      }
+    }, 100)
+    return () => clearTimeout(timer)
+  }, [activeSection, caseData.id])
+
   return (
     <div className="flex flex-col h-full overflow-hidden bg-zinc-950">
       {/* 1. TOP CASE HEADER */}
       <div className="border-b border-zinc-800 bg-zinc-950 px-4 py-2.5 flex-shrink-0">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <span className="text-xs font-mono-data font-700 text-zinc-100 px-2 py-0.5 rounded bg-zinc-900 border border-zinc-700">
-              {caseData.caseNumber}
-            </span>
+        <div className="flex items-center justify-between gap-2 flex-wrap">
+          <div className="flex items-center gap-2.5">
+            <select
+              value={caseData.id}
+              onChange={e => navigate(activeSection === 'overview' ? 'case' : (activeSection || 'case'), e.target.value)}
+              className="bg-zinc-900 border border-zinc-700 hover:border-zinc-500 rounded px-2.5 py-1 text-xs font-mono-data text-zinc-100 font-bold focus:outline-none cursor-pointer"
+            >
+              {CASES.map(c => (
+                <option key={c.id} value={c.id}>
+                  {c.caseNumber} — {c.fraudType} (₹{(c.reportedAmount / 100000).toFixed(1)}L)
+                </option>
+              ))}
+            </select>
             <span className="text-[10px] font-mono-data px-2 py-0.5 rounded bg-emerald-950/60 text-emerald-400 border border-emerald-800/80">
               ACTIVE — SIMULATION
             </span>
-            <span className="text-xs text-zinc-300 font-500">{caseData.fraudType}</span>
-            <span className="text-xs font-mono-data text-emerald-400 font-bold">
+            <span className="text-xs font-mono-data text-emerald-400 font-bold hidden sm:inline">
               ₹{(caseData.reportedAmount / 100000).toFixed(2)}L Reported
             </span>
           </div>
 
           <div className="flex items-center gap-2">
+            <div className="flex items-center gap-1 bg-zinc-900/80 p-0.5 rounded border border-zinc-800 text-[9px] font-mono-data">
+              {[
+                { id: 'case', label: 'OVERVIEW' },
+                { id: 'graph', label: 'GRAPH' },
+                { id: 'predictions', label: 'PREDICTIONS' },
+                { id: 'intervention', label: 'INTERVENTION' },
+                { id: 'feedback', label: 'FEEDBACK' },
+              ].map(tab => {
+                const isActive = (activeSection === tab.id) || (!activeSection && tab.id === 'case') || (activeSection === 'overview' && tab.id === 'case')
+                return (
+                  <button
+                    key={tab.id}
+                    onClick={() => navigate(tab.id, caseData.id)}
+                    className={`px-2 py-0.5 rounded transition-all ${
+                      isActive ? 'bg-zinc-100 text-zinc-950 font-bold' : 'text-zinc-400 hover:text-zinc-200'
+                    }`}
+                  >
+                    {tab.label}
+                  </button>
+                )
+              })}
+            </div>
+
             <button
               onClick={() => navigate('evidence', caseData.id)}
-              className="flex items-center gap-1.5 px-3 py-1 bg-zinc-900 border border-zinc-700 rounded text-[10px] font-mono-data text-zinc-300 hover:border-zinc-500 transition-colors"
+              className="flex items-center gap-1.5 px-2.5 py-1 bg-zinc-900 border border-zinc-700 rounded text-[10px] font-mono-data text-zinc-300 hover:border-zinc-500 transition-colors"
             >
               <FileText size={11} />
-              EVIDENCE PASSPORT
+              <span className="hidden md:inline">PASSPORT</span>
             </button>
             <button
               onClick={() => navigate('map')}
-              className="flex items-center gap-1.5 px-3 py-1 bg-zinc-900 border border-zinc-700 rounded text-[10px] font-mono-data text-zinc-300 hover:border-zinc-500 transition-colors"
+              className="flex items-center gap-1.5 px-2.5 py-1 bg-zinc-900 border border-zinc-700 rounded text-[10px] font-mono-data text-zinc-300 hover:border-zinc-500 transition-colors"
             >
               <MapPin size={11} />
-              THREAT MAP
+              <span className="hidden md:inline">MAP</span>
             </button>
           </div>
         </div>
@@ -1118,7 +1166,12 @@ export default function CaseIntelligence({ caseId, navigate, demoStep, demoRunni
         {/* LEFT COLUMN: Graph Centerpiece + Live Tx Stream + Trace Router */}
         <div className="flex flex-col border-r border-zinc-800 overflow-y-auto p-4 space-y-4">
           {/* CENTERPIECE GRAPH */}
-          <div className="space-y-1.5">
+          <div
+            id="graph-section"
+            className={`space-y-1.5 transition-all rounded p-1.5 ${
+              activeSection === 'graph' ? 'ring-2 ring-blue-500/80 bg-blue-950/20 shadow-lg shadow-blue-500/10' : ''
+            }`}
+          >
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <GitBranch size={13} className="text-amber-400" />
@@ -1178,11 +1231,20 @@ export default function CaseIntelligence({ caseId, navigate, demoStep, demoRunni
 
           {/* PREDICTED VS ACTUAL OUTCOME CARD (Sections 14 & 15) */}
           {showOutcome && pred && (
-            <OutcomeComparisonCard
-              outcome={caseData.outcome}
-              pred={pred}
-              onSelectResult={setSimulatedResult}
-            />
+            <div
+              id="outcome-panel"
+              className={`transition-all rounded-lg ${
+                activeSection === 'feedback'
+                  ? 'ring-2 ring-emerald-500/80 shadow-xl shadow-emerald-500/10'
+                  : ''
+              }`}
+            >
+              <OutcomeComparisonCard
+                outcome={caseData.outcome}
+                pred={pred}
+                onSelectResult={setSimulatedResult}
+              />
+            </div>
           )}
         </div>
 
@@ -1235,14 +1297,23 @@ export default function CaseIntelligence({ caseId, navigate, demoStep, demoRunni
 
           {/* 2. LARGE PREDICTION CARD (Section 10) */}
           {showPred && pred ? (
-            <LargePredictionCard
-              pred={pred}
-              onViewLocation={() => navigate('map')}
-              onViewExplanation={() => {
-                const el = document.getElementById('why-panel')
-                el?.scrollIntoView({ behavior: 'smooth' })
-              }}
-            />
+            <div
+              id="prediction-card"
+              className={`transition-all rounded-lg ${
+                activeSection === 'predictions'
+                  ? 'ring-2 ring-red-500/80 shadow-xl shadow-red-500/10'
+                  : ''
+              }`}
+            >
+              <LargePredictionCard
+                pred={pred}
+                onViewLocation={() => navigate('map')}
+                onViewExplanation={() => {
+                  const el = document.getElementById('why-panel')
+                  el?.scrollIntoView({ behavior: 'smooth' })
+                }}
+              />
+            </div>
           ) : (
             <div className="bg-zinc-900/40 border border-zinc-800 rounded p-6 text-center text-zinc-600 font-mono-data text-[10px]">
               Prediction engine awaiting transaction graph expansion...
@@ -1258,7 +1329,16 @@ export default function CaseIntelligence({ caseId, navigate, demoStep, demoRunni
 
           {/* 4. INTERVENTION OPTIMIZER (Section 11) */}
           {showPred && pred && (
-            <InterventionOptimizer locations={pred.locations} />
+            <div
+              id="intervention-panel"
+              className={`transition-all rounded-lg ${
+                activeSection === 'intervention'
+                  ? 'ring-2 ring-amber-500/80 shadow-xl shadow-amber-500/10'
+                  : ''
+              }`}
+            >
+              <InterventionOptimizer locations={pred.locations} />
+            </div>
           )}
         </div>
       </div>
