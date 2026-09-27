@@ -3,7 +3,11 @@ import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
 import path from 'node:path'
 
-import siteConfiguration from './.figma/make/site.json'
+const siteConfiguration = {
+  description: "Predicts cyber-fraud cash-out locations, times, and amounts using transaction graphs and ML, aiding law enforcement and banks in proactive fraud intervention.",
+  robots: { index: false },
+  accessibility: { addBypassLinks: false, ignoreReducedMotion: false },
+}
 
 
 // Vite config — https://vitejs.dev/config/

@@ -79,10 +79,21 @@ export interface Transaction {
   deviceId?: string
 }
 
+export interface GraphEdge {
+  id: string
+  source: string
+  target: string
+  label: 'TRANSFER' | 'USED_DEVICE' | 'LOGGED_IN' | 'CASH_OUT'
+  amount?: number
+  timestamp?: string
+  channel?: string
+  riskScore?: number
+}
+
 export interface GraphNode {
   id: string
   label: string
-  type: 'VICTIM' | 'MULE' | 'TERMINAL' | 'ATM' | 'CSP' | 'BRANCH'
+  type: 'VICTIM' | 'MULE' | 'TERMINAL' | 'ATM' | 'CSP' | 'BRANCH' | 'ACCOUNT' | 'DEVICE' | 'PHONE' | 'UPI'
   amount: number
   riskScore: number
   txCount: number
@@ -90,6 +101,16 @@ export interface GraphNode {
   lastSeen: string
   bank: string
   state: string
+  metadata?: {
+    model?: string
+    imei?: string
+    isRooted?: boolean
+    phone?: string
+    vpa?: string
+    ip?: string
+    operator?: string
+    notes?: string
+  }
 }
 
 export interface Alert {
@@ -145,6 +166,7 @@ export interface FraudCase {
   geoWeight: number
   transactions: Transaction[]
   graphNodes: GraphNode[]
+  graphEdges?: GraphEdge[]
   prediction?: Prediction
   alert?: Alert
   outcome?: CaseOutcome
@@ -224,9 +246,69 @@ function genTxId(n: number): string {
 const BANKS = ['SBI', 'HDFC', 'ICICI', 'PNB', 'BOB', 'Kotak', 'Axis', 'Union', 'Canara', 'IOB']
 
 function makePrediction(caseId: string, idx: number, amount: number, conf: TraceConfidence, state: string): Prediction {
+  const isDemo = idx === 0 || caseId === 'CASE-SNTL-2026-0042'
   const tgnW = conf === 'HIGH' ? 0.68 : conf === 'MEDIUM' ? 0.5 : 0.28
   const geoW = 1 - tgnW
-  const locs: LocationPrediction[] = [
+
+  const locs: LocationPrediction[] = isDemo ? [
+    {
+      rank: 1,
+      name: 'CSP-042 - HDFC CSP Kiosk Malad',
+      address: 'Shop 3, Crystal Plaza, New Link Road, Malad West',
+      type: 'CSP',
+      bank: 'HDFC Bank',
+      probability: 0.874,
+      confidence: 0.89,
+      lat: 19.1860,
+      lng: 72.8354,
+      expectedRecovery: 291500,
+      tgnScore: 0.88,
+      geoScore: 0.84,
+      fusionScore: 0.874,
+      district: 'Mumbai Suburban',
+      state: 'Maharashtra',
+      distanceKm: 5.8,
+      etaMin: 18,
+    },
+    {
+      rank: 2,
+      name: 'SBI ATM - Andheri West SV Road',
+      address: 'Plot 14, S.V. Road, Near Andheri Metro Station',
+      type: 'ATM',
+      bank: 'State Bank of India',
+      probability: 0.092,
+      confidence: 0.78,
+      lat: 19.1197,
+      lng: 72.8468,
+      expectedRecovery: 38600,
+      tgnScore: 0.62,
+      geoScore: 0.71,
+      fusionScore: 0.092,
+      district: 'Mumbai Suburban',
+      state: 'Maharashtra',
+      distanceKm: 8.2,
+      etaMin: 24,
+    },
+    {
+      rank: 3,
+      name: 'ICICI Bank Branch - Borivali West',
+      address: 'Premises 12, LT Road, Borivali West',
+      type: 'Branch',
+      bank: 'ICICI Bank',
+      probability: 0.034,
+      confidence: 0.65,
+      lat: 19.2312,
+      lng: 72.8550,
+      expectedRecovery: 14200,
+      tgnScore: 0.41,
+      geoScore: 0.48,
+      fusionScore: 0.034,
+      district: 'Mumbai Suburban',
+      state: 'Maharashtra',
+      distanceKm: 13.5,
+      etaMin: 32,
+    },
+  ] : [
     {
       rank: 1,
       name: `${BANKS[idx % BANKS.length]} ATM - ${['Andheri', 'Koramangala', 'Connaught Place', 'T Nagar', 'Gomti Nagar', 'Vastrapur', 'New Town', 'Hitech City', 'Civil Lines', 'Model Town'][idx % 10]}`,
@@ -286,7 +368,14 @@ function makePrediction(caseId: string, idx: number, amount: number, conf: Trace
     },
   ]
 
-  const shapFactors: ShapFactor[] = [
+  const shapFactors: ShapFactor[] = isDemo ? [
+    { feature: 'Recent transaction proximity', impact: 0.31, value: '₹1.8L (TX-98233)', description: 'Significant transfer credit observed at Hop 4 matching mule profile', direction: 'positive' },
+    { feature: 'Mule-account behaviour', impact: 0.24, value: '4 hops / 35 min', description: 'Rapid hop-to-hop latency signals urgent cash-out staging', direction: 'positive' },
+    { feature: 'Historical synthetic cash-out pattern', impact: 0.19, value: 'Match: 0.89', description: 'CSP-042 recorded 9 previous cash-out matches for UPI frauds', direction: 'positive' },
+    { feature: 'Geographic proximity', impact: 0.15, value: '5.8 km cluster', description: 'Kiosk situated in Mumbai Suburban active fraud corridor', direction: 'positive' },
+    { feature: 'Time-of-day operational pattern', impact: 0.11, value: '14:30–15:30', description: 'Current timestamp aligns with peak AePS agent cash reserves', direction: 'positive' },
+    { feature: 'Decoy noise attenuation', impact: -0.08, value: '2 background txs', description: 'Parallel benign transactions slightly dilute graph trace certainty', direction: 'negative' },
+  ] : [
     { feature: 'Recent mule transfer (T-12min)', impact: 0.31, value: `₹${(amount * 0.94 / 100000).toFixed(1)}L`, description: 'Large transfer to known mule pattern', direction: 'positive' },
     { feature: 'Transaction velocity', impact: 0.24, value: '4 hops / 38min', description: 'High velocity matching cash-out pattern', direction: 'positive' },
     { feature: 'Historical cash-out pattern', impact: 0.19, value: 'Match: 0.83', description: 'Similar chain resolved at ATM (n=14)', direction: 'positive' },
@@ -300,20 +389,319 @@ function makePrediction(caseId: string, idx: number, amount: number, conf: Trace
     caseId,
     timestamp: new Date(Date.now() - 1800000 + idx * 300000).toISOString(),
     locations: locs,
-    timeWindowMin: 15 + (idx % 6) * 2,
-    timeWindowMax: 28 + (idx % 6) * 2,
-    amountMin: amount * 0.78,
-    amountMax: amount * 0.95,
+    timeWindowMin: isDemo ? 18 : 15 + (idx % 6) * 2,
+    timeWindowMax: isDemo ? 27 : 28 + (idx % 6) * 2,
+    amountMin: isDemo ? 380000 : amount * 0.78,
+    amountMax: isDemo ? 420000 : amount * 0.95,
     shapFactors,
-    counterfactual: `If the last transfer amount decreases by 20%, predicted ATM probability changes from ${(locs[0].probability * 100).toFixed(1)}% to ${((locs[0].probability - 0.14) * 100).toFixed(1)}%`,
-    counterfactualEffect: `Reduction in transaction velocity would shift primary prediction from ATM to CSP outlet (rank swap 1↔2)`,
-    expectedRecovery: amount * 0.62,
+    counterfactual: isDemo
+      ? 'If the last transfer amount decreases by 20% (to ₹1.44L), predicted CSP-042 probability changes from 87.4% to 68.2%.'
+      : `If the last transfer amount decreases by 20%, predicted ATM probability changes from ${(locs[0].probability * 100).toFixed(1)}% to ${((locs[0].probability - 0.14) * 100).toFixed(1)}%`,
+    counterfactualEffect: isDemo
+      ? 'A 40% reduction in inter-hop velocity would shift primary prediction from CSP outlet to branch counter (rank swap 1 ↔ 2).'
+      : `Reduction in transaction velocity would shift primary prediction from ATM to CSP outlet (rank swap 1↔2)`,
+    expectedRecovery: isDemo ? 291500 : amount * 0.62,
     traceConfidence: conf,
     tgnWeight: tgnW,
     geoWeight: geoW,
     modelVersion: 'SENTINEL-TGN-v0.4.2-PROTOTYPE',
     inputHash: makeHash(`pred-${caseId}-${idx}`),
   }
+}
+
+function makeDemoData(baseTime: Date) {
+  const baseMs = baseTime.getTime()
+  const txs: Transaction[] = [
+    {
+      id: 'TX-98230',
+      caseId: 'CASE-SNTL-2026-0042',
+      timestamp: new Date(baseMs).toISOString(),
+      fromAccount: 'VICT-MUM-8492',
+      toAccount: 'MULE-01-4491',
+      amount: 485000,
+      channel: 'UPI',
+      riskScore: 0.35,
+      hop: 0,
+      isNoise: false,
+      state: 'Maharashtra',
+      district: 'Mumbai',
+      fromBank: 'State Bank of India',
+      toBank: 'HDFC Bank',
+      deviceId: 'DEV-REDMI-12',
+    },
+    {
+      id: 'TX-98231',
+      caseId: 'CASE-SNTL-2026-0042',
+      timestamp: new Date(baseMs + 12 * 60000).toISOString(),
+      fromAccount: 'MULE-01-4491',
+      toAccount: 'MULE-02-7812',
+      amount: 120000,
+      channel: 'IMPS',
+      riskScore: 0.58,
+      hop: 1,
+      isNoise: false,
+      state: 'Maharashtra',
+      district: 'Mumbai',
+      fromBank: 'HDFC Bank',
+      toBank: 'ICICI Bank',
+      deviceId: 'DEV-REDMI-12',
+    },
+    {
+      id: 'TX-98232',
+      caseId: 'CASE-SNTL-2026-0042',
+      timestamp: new Date(baseMs + 21 * 60000).toISOString(),
+      fromAccount: 'MULE-02-7812',
+      toAccount: 'MULE-03-3190',
+      amount: 95000,
+      channel: 'UPI',
+      riskScore: 0.74,
+      hop: 2,
+      isNoise: false,
+      state: 'Maharashtra',
+      district: 'Mumbai',
+      fromBank: 'ICICI Bank',
+      toBank: 'Kotak Mahindra Bank',
+      deviceId: 'DEV-SAMSUNG-M14',
+    },
+    {
+      id: 'TX-98233',
+      caseId: 'CASE-SNTL-2026-0042',
+      timestamp: new Date(baseMs + 33 * 60000).toISOString(),
+      fromAccount: 'MULE-03-3190',
+      toAccount: 'TERM-04-9912',
+      amount: 180000,
+      channel: 'IMPS',
+      riskScore: 0.94,
+      hop: 3,
+      isNoise: false,
+      state: 'Maharashtra',
+      district: 'Mumbai',
+      fromBank: 'Kotak Mahindra Bank',
+      toBank: 'Axis Bank',
+      deviceId: 'DEV-REDMI-12',
+    },
+    {
+      id: 'TXN-NOISE-01',
+      caseId: 'CASE-SNTL-2026-0042',
+      timestamp: new Date(baseMs + 15 * 60000).toISOString(),
+      fromAccount: 'NORM-01-201',
+      toAccount: 'NORM-02-202',
+      amount: 12500,
+      channel: 'UPI',
+      riskScore: 0.08,
+      hop: -1,
+      isNoise: true,
+      state: 'Maharashtra',
+      district: 'Mumbai',
+      fromBank: 'Axis Bank',
+      toBank: 'Canara Bank',
+    },
+    {
+      id: 'TXN-NOISE-02',
+      caseId: 'CASE-SNTL-2026-0042',
+      timestamp: new Date(baseMs + 28 * 60000).toISOString(),
+      fromAccount: 'NORM-03-301',
+      toAccount: 'NORM-04-302',
+      amount: 4800,
+      channel: 'UPI',
+      riskScore: 0.05,
+      hop: -1,
+      isNoise: true,
+      state: 'Maharashtra',
+      district: 'Mumbai',
+      fromBank: 'PNB',
+      toBank: 'SBI',
+    },
+  ]
+
+  const nodes: GraphNode[] = [
+    {
+      id: 'VICT-MUM-8492',
+      label: 'Victim A/c',
+      type: 'VICTIM',
+      amount: 485000,
+      riskScore: 0.12,
+      txCount: 1,
+      firstSeen: new Date(baseMs).toISOString(),
+      lastSeen: new Date(baseMs).toISOString(),
+      bank: 'State Bank of India',
+      state: 'Maharashtra',
+      metadata: { notes: 'A/c 30948192019 · Reported UPI unauthorized debits' },
+    },
+    {
+      id: 'MULE-01-4491',
+      label: 'Mule-01',
+      type: 'MULE',
+      amount: 485000,
+      riskScore: 0.58,
+      txCount: 2,
+      firstSeen: new Date(baseMs).toISOString(),
+      lastSeen: new Date(baseMs + 12 * 60000).toISOString(),
+      bank: 'HDFC Bank',
+      state: 'Maharashtra',
+      metadata: { notes: 'Primary mule credit receiver · Rapid outbound IMPS' },
+    },
+    {
+      id: 'MULE-02-7812',
+      label: 'Mule-02',
+      type: 'MULE',
+      amount: 120000,
+      riskScore: 0.74,
+      txCount: 2,
+      firstSeen: new Date(baseMs + 12 * 60000).toISOString(),
+      lastSeen: new Date(baseMs + 21 * 60000).toISOString(),
+      bank: 'ICICI Bank',
+      state: 'Maharashtra',
+      metadata: { notes: 'Intermediate mule relay · Fast outbound UPI' },
+    },
+    {
+      id: 'MULE-03-3190',
+      label: 'Mule-03',
+      type: 'MULE',
+      amount: 95000,
+      riskScore: 0.86,
+      txCount: 2,
+      firstSeen: new Date(baseMs + 21 * 60000).toISOString(),
+      lastSeen: new Date(baseMs + 33 * 60000).toISOString(),
+      bank: 'Kotak Mahindra',
+      state: 'Maharashtra',
+      metadata: { notes: 'Layer 3 mule · High in-degree node' },
+    },
+    {
+      id: 'TERM-04-9912',
+      label: 'Terminal A/c',
+      type: 'TERMINAL',
+      amount: 180000,
+      riskScore: 0.95,
+      txCount: 1,
+      firstSeen: new Date(baseMs + 33 * 60000).toISOString(),
+      lastSeen: new Date(baseMs + 33 * 60000).toISOString(),
+      bank: 'Axis Bank',
+      state: 'Maharashtra',
+      metadata: { notes: 'Terminal liquidation account · Cash-out staging' },
+    },
+    {
+      id: 'DEV-REDMI-12',
+      label: 'Redmi Note 12',
+      type: 'DEVICE',
+      amount: 0,
+      riskScore: 0.88,
+      txCount: 2,
+      firstSeen: new Date(baseMs + 5 * 60000).toISOString(),
+      lastSeen: new Date(baseMs + 33 * 60000).toISOString(),
+      bank: 'Xiaomi',
+      state: 'Maharashtra',
+      metadata: { model: 'Xiaomi Redmi Note 12', imei: '864910284918291', isRooted: true, ip: '103.21.58.42', notes: 'Rooted custom ROM running banking emulator' },
+    },
+    {
+      id: 'DEV-SAMSUNG-M14',
+      label: 'Galaxy M14',
+      type: 'DEVICE',
+      amount: 0,
+      riskScore: 0.52,
+      txCount: 1,
+      firstSeen: new Date(baseMs + 18 * 60000).toISOString(),
+      lastSeen: new Date(baseMs + 21 * 60000).toISOString(),
+      bank: 'Samsung',
+      state: 'Maharashtra',
+      metadata: { model: 'Samsung Galaxy M14', imei: '358291048192049', isRooted: false, ip: '157.34.120.18' },
+    },
+    {
+      id: 'PHONE-98201',
+      label: '+91-98201',
+      type: 'PHONE',
+      amount: 0,
+      riskScore: 0.91,
+      txCount: 2,
+      firstSeen: new Date(baseMs).toISOString(),
+      lastSeen: new Date(baseMs + 33 * 60000).toISOString(),
+      bank: 'AirTel',
+      state: 'Maharashtra',
+      metadata: { phone: '+91-98201-94821', operator: 'AirTel Prepaid', notes: 'SIM swapped 18h prior to fraud' },
+    },
+    {
+      id: 'PHONE-97110',
+      label: '+91-97110',
+      type: 'PHONE',
+      amount: 0,
+      riskScore: 0.64,
+      txCount: 1,
+      firstSeen: new Date(baseMs + 18 * 60000).toISOString(),
+      lastSeen: new Date(baseMs + 21 * 60000).toISOString(),
+      bank: 'Jio',
+      state: 'Maharashtra',
+      metadata: { phone: '+91-97110-38192', operator: 'Reliance Jio' },
+    },
+    {
+      id: 'UPI-MULE01',
+      label: 'mule01@okhdfc',
+      type: 'UPI',
+      amount: 0,
+      riskScore: 0.72,
+      txCount: 1,
+      firstSeen: new Date(baseMs).toISOString(),
+      lastSeen: new Date(baseMs + 12 * 60000).toISOString(),
+      bank: 'HDFC Bank',
+      state: 'Maharashtra',
+      metadata: { vpa: 'mule01.pay@okhdfc', notes: 'Virtual payment address created 3 days ago' },
+    },
+    {
+      id: 'UPI-FASTPAY',
+      label: 'fastpay@icici',
+      type: 'UPI',
+      amount: 0,
+      riskScore: 0.78,
+      txCount: 1,
+      firstSeen: new Date(baseMs + 20 * 60000).toISOString(),
+      lastSeen: new Date(baseMs + 22 * 60000).toISOString(),
+      bank: 'ICICI Bank',
+      state: 'Maharashtra',
+      metadata: { vpa: 'fastpayout2@icici' },
+    },
+    {
+      id: 'CSP-042',
+      label: 'CSP-042 Malad',
+      type: 'CSP',
+      amount: 410000,
+      riskScore: 0.89,
+      txCount: 1,
+      firstSeen: new Date(baseMs + 35 * 60000).toISOString(),
+      lastSeen: new Date(baseMs + 35 * 60000).toISOString(),
+      bank: 'HDFC Bank',
+      state: 'Maharashtra',
+      metadata: { name: 'HDFC CSP Kiosk - Malad Link Road', address: 'Shop 3, Crystal Plaza, Malad West', notes: 'Primary predicted cash-out outlet (87.4%)' },
+    },
+    {
+      id: 'SBI-ATM-01',
+      label: 'SBI ATM Andheri',
+      type: 'ATM',
+      amount: 38600,
+      riskScore: 0.78,
+      txCount: 1,
+      firstSeen: new Date(baseMs + 35 * 60000).toISOString(),
+      lastSeen: new Date(baseMs + 35 * 60000).toISOString(),
+      bank: 'SBI',
+      state: 'Maharashtra',
+      metadata: { name: 'SBI ATM - Andheri West SV Road', address: 'Plot 14, SV Road, Andheri West' },
+    },
+  ]
+
+  const edges: GraphEdge[] = [
+    { id: 'e-tx-0', source: 'VICT-MUM-8492', target: 'MULE-01-4491', label: 'TRANSFER', amount: 485000, channel: 'UPI', timestamp: new Date(baseMs).toISOString(), riskScore: 0.35 },
+    { id: 'e-tx-1', source: 'MULE-01-4491', target: 'MULE-02-7812', label: 'TRANSFER', amount: 120000, channel: 'IMPS', timestamp: new Date(baseMs + 12 * 60000).toISOString(), riskScore: 0.58 },
+    { id: 'e-tx-2', source: 'MULE-02-7812', target: 'MULE-03-3190', label: 'TRANSFER', amount: 95000, channel: 'UPI', timestamp: new Date(baseMs + 21 * 60000).toISOString(), riskScore: 0.74 },
+    { id: 'e-tx-3', source: 'MULE-03-3190', target: 'TERM-04-9912', label: 'TRANSFER', amount: 180000, channel: 'IMPS', timestamp: new Date(baseMs + 33 * 60000).toISOString(), riskScore: 0.94 },
+    { id: 'e-dev-1', source: 'MULE-01-4491', target: 'DEV-REDMI-12', label: 'USED_DEVICE' },
+    { id: 'e-dev-2', source: 'MULE-02-7812', target: 'DEV-SAMSUNG-M14', label: 'USED_DEVICE' },
+    { id: 'e-dev-3', source: 'MULE-03-3190', target: 'DEV-REDMI-12', label: 'USED_DEVICE' },
+    { id: 'e-ph-1', source: 'MULE-01-4491', target: 'PHONE-98201', label: 'LOGGED_IN' },
+    { id: 'e-ph-2', source: 'MULE-02-7812', target: 'PHONE-97110', label: 'LOGGED_IN' },
+    { id: 'e-upi-1', source: 'MULE-01-4491', target: 'UPI-MULE01', label: 'LOGGED_IN' },
+    { id: 'e-upi-2', source: 'MULE-02-7812', target: 'UPI-FASTPAY', label: 'LOGGED_IN' },
+    { id: 'e-cash-1', source: 'TERM-04-9912', target: 'CSP-042', label: 'CASH_OUT', amount: 410000, riskScore: 0.89 },
+  ]
+
+  return { txs, nodes, edges }
 }
 
 function makeTxChain(caseId: string, amount: number, hops: number, fraudType: FraudType, baseTime: Date): Transaction[] {
@@ -425,7 +813,7 @@ const RAW_CASES: Array<{
   badge: string
   notes: string
 }> = [
-  { fraudType: 'UPI Fraud', amount: 450000, state: 'Maharashtra', district: 'Mumbai', severity: 'CRITICAL', status: 'ACTIVE', hops: 4, conf: 'HIGH', officer: 'Insp. R. Sharma', badge: 'MH-CYB-0312', notes: 'Victim reported unauthorized UPI debits. Suspect posed as KYC agent.' },
+  { fraudType: 'UPI Fraud', amount: 485000, state: 'Maharashtra', district: 'Mumbai', severity: 'CRITICAL', status: 'ACTIVE', hops: 4, conf: 'HIGH', officer: 'Insp. R. Sharma', badge: 'MH-CYB-0312', notes: 'Victim reported unauthorized UPI debits. Suspect posed as KYC agent. Flagged for SIH Live Demo.' },
   { fraudType: 'Investment Scam', amount: 1200000, state: 'Delhi', district: 'New Delhi', severity: 'CRITICAL', status: 'ACTIVE', hops: 5, conf: 'MEDIUM', officer: 'SI Kavita Nair', badge: 'DL-CYB-0147', notes: 'Fake trading app promised 40% returns. 12 victims identified.' },
   { fraudType: 'Phishing', amount: 230000, state: 'Karnataka', district: 'Bangalore Urban', severity: 'HIGH', status: 'RESOLVED', hops: 3, conf: 'HIGH', officer: 'Insp. A. Rao', badge: 'KA-CYB-0089', notes: 'Bank SMS phishing. Funds traced to ATM withdrawal.' },
   { fraudType: 'Job Scam', amount: 180000, state: 'Tamil Nadu', district: 'Chennai', severity: 'HIGH', status: 'ACTIVE', hops: 2, conf: 'LOW', officer: 'SI P. Kumar', badge: 'TN-CYB-0231', notes: 'Fake job offer required registration fee. Multiple victims.' },
@@ -450,27 +838,43 @@ const RAW_CASES: Array<{
 const BASE_TIME = new Date('2024-03-15T09:00:00+05:30')
 
 export const CASES: FraudCase[] = RAW_CASES.map((raw, idx) => {
-  const id = `CASE-${(idx + 1).toString().padStart(4, '0')}`
-  const caseNumber = `CYB-2024-${raw.state.slice(0, 2).toUpperCase()}-${(142 + idx).toString().padStart(5, '0')}`
+  const isDemo = idx === 0
+  const id = isDemo ? 'CASE-SNTL-2026-0042' : `CASE-${(idx + 1).toString().padStart(4, '0')}`
+  const caseNumber = isDemo ? 'SNTL-2026-0042' : `CYB-2024-${raw.state.slice(0, 2).toUpperCase()}-${(142 + idx).toString().padStart(5, '0')}`
   const complaintTime = new Date(BASE_TIME.getTime() - (20 - idx) * 3600000 * 6).toISOString()
-  const txs = makeTxChain(id, raw.amount, raw.hops, raw.fraudType, new Date(complaintTime))
-  const nodes = makeGraphNodes(txs)
-  const pred = raw.status !== 'CLOSED' ? makePrediction(id, idx, raw.amount, raw.conf, raw.state) : undefined
+
+  let txs: Transaction[]
+  let nodes: GraphNode[]
+  let edges: GraphEdge[] | undefined
+
+  if (isDemo) {
+    const demo = makeDemoData(new Date(complaintTime))
+    txs = demo.txs
+    nodes = demo.nodes
+    edges = demo.edges
+  } else {
+    txs = makeTxChain(id, raw.amount, raw.hops, raw.fraudType, new Date(complaintTime))
+    nodes = makeGraphNodes(txs)
+  }
+
+  const pred = raw.status !== 'CLOSED' ? makePrediction(id, idx, isDemo ? 485000 : raw.amount, raw.conf, raw.state) : undefined
   const bankIds = Array.from(new Set(txs.map(t => t.fromBank).concat(txs.map(t => t.toBank)))).slice(0, 3)
 
   const alert: Alert | undefined = pred && raw.severity !== 'LOW' ? {
-    id: `ALRT-${id.slice(-4)}-${idx.toString().padStart(3, '0')}`,
+    id: isDemo ? 'ALRT-SNTL-0042' : `ALRT-${id.slice(-4)}-${idx.toString().padStart(3, '0')}`,
     caseId: id,
     level: raw.severity === 'CRITICAL' ? 'RED' : raw.severity === 'HIGH' ? 'AMBER' : 'GREEN',
     location: pred.locations[0].name,
     locationAddress: pred.locations[0].address,
     timeWindow: `${pred.timeWindowMin}–${pred.timeWindowMax} min`,
-    amount: raw.amount,
+    amount: isDemo ? 485000 : raw.amount,
     probability: pred.locations[0].probability,
     confidence: pred.locations[0].confidence,
-    reason: `${raw.hops}-hop chain traced with ${raw.conf.toLowerCase()} confidence. Pattern matches historical ${raw.fraudType} cash-outs.`,
-    recommendedAction: `Dispatch nearest patrol unit to ${pred.locations[0].name}. Alert ${pred.locations[0].bank} branch manager for account freeze authorization.`,
-    status: raw.status === 'RESOLVED' ? 'RESOLVED' : idx < 5 ? 'PENDING' : idx < 10 ? 'ACKNOWLEDGED' : 'PENDING',
+    reason: isDemo
+      ? 'High-confidence transaction chain with matching synthetic geo-temporal pattern.'
+      : `${raw.hops}-hop chain traced with ${raw.conf.toLowerCase()} confidence. Pattern matches historical ${raw.fraudType} cash-outs.`,
+    recommendedAction: 'VERIFY LOCATION AND DEPLOY AVAILABLE RESPONSE RESOURCE',
+    status: isDemo ? 'PENDING' : raw.status === 'RESOLVED' ? 'RESOLVED' : idx < 5 ? 'PENDING' : idx < 10 ? 'ACKNOWLEDGED' : 'PENDING',
     timestamp: new Date(new Date(complaintTime).getTime() + raw.hops * 8 * 60000 + 120000).toISOString(),
     officerId: raw.badge,
     officerAction: raw.status === 'RESOLVED' ? 'CONFIRM' : undefined,
@@ -482,8 +886,8 @@ export const CASES: FraudCase[] = RAW_CASES.map((raw, idx) => {
     result: idx % 3 === 0 ? 'HIT' : idx % 3 === 1 ? 'PARTIAL' : 'MISS',
     actualLocation: pred?.locations[0].name ?? 'Unknown',
     actualTime: new Date(new Date(complaintTime).getTime() + raw.hops * 10 * 60000).toISOString(),
-    actualAmount: Math.round(raw.amount * 0.88),
-    cashRecovered: idx % 3 === 0 ? Math.round(raw.amount * 0.76) : idx % 3 === 1 ? Math.round(raw.amount * 0.41) : 0,
+    actualAmount: Math.round((isDemo ? 485000 : raw.amount) * 0.88),
+    cashRecovered: idx % 3 === 0 ? Math.round((isDemo ? 485000 : raw.amount) * 0.76) : idx % 3 === 1 ? Math.round((isDemo ? 485000 : raw.amount) * 0.41) : 0,
     officerComments: idx % 3 === 0 ? 'ATM withdrawal intercepted. Suspect apprehended.' : idx % 3 === 1 ? 'Partial recovery. Suspect fled before full withdrawal.' : 'Withdrawal completed before patrol arrived.',
     recordedBy: raw.badge,
     recordedAt: new Date(new Date(complaintTime).getTime() + raw.hops * 12 * 60000 + 3600000).toISOString(),
@@ -493,13 +897,13 @@ export const CASES: FraudCase[] = RAW_CASES.map((raw, idx) => {
     id,
     caseNumber,
     fraudType: raw.fraudType,
-    reportedAmount: raw.amount,
+    reportedAmount: isDemo ? 485000 : raw.amount,
     complaintTime,
     state: raw.state,
     district: raw.district,
     status: raw.status,
     severity: raw.severity,
-    victimAccountToken: makeToken('VICT', idx * 7 + 1),
+    victimAccountToken: isDemo ? 'VICT-MUM-8492' : makeToken('VICT', idx * 7 + 1),
     initialTxId: txs[0]?.id ?? '',
     officerName: raw.officer,
     officerBadge: raw.badge,
@@ -509,6 +913,7 @@ export const CASES: FraudCase[] = RAW_CASES.map((raw, idx) => {
     geoWeight: raw.conf === 'HIGH' ? 0.32 : raw.conf === 'MEDIUM' ? 0.5 : 0.72,
     transactions: txs,
     graphNodes: nodes,
+    graphEdges: edges,
     prediction: pred,
     alert,
     outcome,

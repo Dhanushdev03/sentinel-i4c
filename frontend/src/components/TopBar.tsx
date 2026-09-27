@@ -7,9 +7,18 @@ interface TopBarProps {
   userName: string
   onRunDemo: () => void
   demoRunning: boolean
+  onToggleDemoControls?: () => void
+  onResetDemo?: () => void
 }
 
-export default function TopBar({ userRole, userName, onRunDemo, demoRunning }: TopBarProps) {
+export default function TopBar({
+  userRole,
+  userName,
+  onRunDemo,
+  demoRunning,
+  onToggleDemoControls,
+  onResetDemo,
+}: TopBarProps) {
   const [time, setTime] = useState(new Date())
 
   useEffect(() => {
@@ -68,18 +77,40 @@ export default function TopBar({ userRole, userName, onRunDemo, demoRunning }: T
         </div>
       )}
 
-      <button
-        onClick={onRunDemo}
-        disabled={demoRunning}
-        className={`flex items-center gap-1.5 px-3 py-1 rounded text-[10px] font-mono-data font-600 tracking-wider transition-all ${
-          demoRunning
-            ? 'bg-zinc-800 text-zinc-500 cursor-not-allowed'
-            : 'bg-white text-zinc-950 hover:bg-zinc-200 active:scale-95'
-        }`}
-      >
-        <Play size={9} />
-        {demoRunning ? 'DEMO RUNNING...' : 'RUN LIVE DEMO'}
-      </button>
+      <div className="flex items-center gap-1.5">
+        <button
+          onClick={onRunDemo}
+          disabled={demoRunning}
+          className={`flex items-center gap-1.5 px-3 py-1 rounded text-[10px] font-mono-data font-600 tracking-wider transition-all ${
+            demoRunning
+              ? 'bg-zinc-800 text-zinc-500 cursor-not-allowed'
+              : 'bg-white text-zinc-950 hover:bg-zinc-200 active:scale-95 shadow'
+          }`}
+        >
+          <Play size={9} />
+          {demoRunning ? 'DEMO RUNNING...' : 'RUN LIVE DEMO'}
+        </button>
+
+        {onToggleDemoControls && (
+          <button
+            onClick={onToggleDemoControls}
+            className="flex items-center gap-1 px-2.5 py-1 bg-zinc-900 border border-zinc-700/80 rounded text-[9px] font-mono-data text-zinc-300 hover:border-zinc-500 hover:text-white transition-all"
+            title="Open Demo Controls Panel"
+          >
+            DEMO CONTROLS
+          </button>
+        )}
+
+        {onResetDemo && (
+          <button
+            onClick={onResetDemo}
+            className="flex items-center gap-1 px-2 py-1 bg-zinc-900 border border-zinc-800 rounded text-[9px] font-mono-data text-zinc-400 hover:text-zinc-200 hover:border-zinc-700 transition-all"
+            title="Reset Demo to initial state"
+          >
+            RESET
+          </button>
+        )}
+      </div>
 
       <div className="flex items-center gap-1 px-2.5 py-1 bg-zinc-900/60 border border-zinc-800 rounded">
         <Clock size={10} className="text-zinc-600" />
