@@ -296,7 +296,7 @@ function NewCaseModal({ onClose, onSubmit }: { onClose: () => void; onSubmit: ()
 const CURRENT_USER = USERS[0]
 
 export default function App() {
-  const [page, setPage] = useState<Page>('landing')
+  const [page, setPage] = useState<Page>('dashboard')
   const [selectedCaseId, setSelectedCaseId] = useState<string | null>(DEMO_CASE.id)
   const [demoRunning, setDemoRunning] = useState(false)
   const [demoStep, setDemoStep] = useState(-1)
@@ -378,17 +378,17 @@ export default function App() {
     setTimeout(() => setNotification(null), 4000)
   }
 
-  if (page === 'landing') {
-    return (
-      <Landing
-        onStartDemo={() => { startDemo(); setPage('case') }}
-        onOpenDashboard={() => setPage('dashboard')}
-      />
-    )
-  }
-
   function renderPage() {
     switch (page) {
+      case 'landing':
+        return (
+          <div className="h-full overflow-y-auto">
+            <Landing
+              onStartDemo={() => { startDemo(); setPage('case') }}
+              onOpenDashboard={() => setPage('dashboard')}
+            />
+          </div>
+        )
       case 'dashboard':
         return <Dashboard navigate={navigate} demoStep={demoStep} demoRunning={demoRunning} />
       case 'cases':
@@ -460,7 +460,7 @@ export default function App() {
     }
   }
 
-  const sidebarPage = (page === 'landing' ? 'dashboard' : page) as any
+  const sidebarPage = page as any
 
   return (
     <div className="h-screen flex flex-col bg-zinc-950 overflow-hidden">

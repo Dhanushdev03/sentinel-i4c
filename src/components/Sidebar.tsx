@@ -14,6 +14,7 @@ import {
   AlertTriangle,
   MapPin,
   Cpu,
+  Info,
 } from 'lucide-react'
 import { CASES } from '../data/mockData'
 
@@ -31,6 +32,7 @@ export type Page =
   | 'analytics'
   | 'audit'
   | 'admin'
+  | 'landing'
 
 interface SidebarProps {
   page: Page
@@ -56,6 +58,7 @@ const NAV_ITEMS: {
   { id: 'analytics', label: 'Analytics', icon: BarChart2 },
   { id: 'audit', label: 'Audit Log', icon: ScrollText },
   { id: 'admin', label: 'Admin Console', icon: Settings },
+  { id: 'landing', label: 'Platform Overview', icon: Info },
 ]
 
 export default function Sidebar({ page, navigate }: SidebarProps) {
