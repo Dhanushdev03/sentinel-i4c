@@ -1,0 +1,18 @@
+# Vercel Deployment Ignore
+# Exclude backend and test files from the frontend build upload
+backend/
+ml/
+simulator/
+database/
+neo4j/
+tests/
+docker/
+docker-compose.yml
+requirements.txt
+.pytest_cache/
+__pycache__/
+*.pyc
+*.py
+docs/
+.git/
+.figma/

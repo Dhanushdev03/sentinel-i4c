@@ -1,0 +1,239 @@
+@import url('https://fonts.googleapis.com/css2?family=Rajdhani:wght@400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&display=swap');
+@import 'tailwindcss';
+
+@theme {
+  --font-sans: 'Inter', sans-serif;
+  --font-display: 'Rajdhani', sans-serif;
+  --font-mono: 'JetBrains Mono', monospace;
+  --color-bg: #060608;
+  --color-surface: #0d0d12;
+  --color-panel: #121218;
+  --color-border: #1e1e2a;
+  --color-border-bright: #2e2e3e;
+  --color-text: #f0f0f2;
+  --color-muted: #6b6b7a;
+  --color-subtle: #3a3a4a;
+  --color-critical: #e53e3e;
+  --color-critical-dim: #7f1d1d;
+  --color-warn: #d97706;
+  --color-safe: #16a34a;
+  --color-accent: #3b82f6;
+  --color-accent-dim: #1d3461;
+  --color-terminal: #4ade80;
+  --color-cyan: #22d3ee;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  background-color: #060608;
+  color: #f0f0f2;
+  font-family: 'Inter', sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+::-webkit-scrollbar {
+  width: 3px;
+  height: 3px;
+}
+::-webkit-scrollbar-track {
+  background: #0d0d12;
+}
+::-webkit-scrollbar-thumb {
+  background: #2e2e3e;
+  border-radius: 2px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #4e4e5e;
+}
+
+@keyframes pulse-critical {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.3;
+  }
+}
+
+@keyframes scan-line {
+  0% {
+    transform: translateY(-100%);
+  }
+  100% {
+    transform: translateY(400%);
+  }
+}
+
+@keyframes slide-up {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes slide-right {
+  from {
+    opacity: 0;
+    transform: translateX(-12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes draw-line {
+  from {
+    stroke-dashoffset: 1000;
+  }
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+
+@keyframes node-appear {
+  from {
+    r: 0;
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes count-up {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes ping-slow {
+  0% {
+    transform: scale(1);
+    opacity: 0.8;
+  }
+  75%,
+  100% {
+    transform: scale(2.2);
+    opacity: 0;
+  }
+}
+
+@keyframes glow-pulse {
+  0%,
+  100% {
+    box-shadow: 0 0 6px 1px rgba(229, 62, 62, 0.4);
+  }
+  50% {
+    box-shadow: 0 0 14px 3px rgba(229, 62, 62, 0.7);
+  }
+}
+
+@keyframes typing {
+  from {
+    width: 0;
+  }
+  to {
+    width: 100%;
+  }
+}
+
+.animate-pulse-critical {
+  animation: pulse-critical 1.4s ease-in-out infinite;
+}
+
+.animate-slide-up {
+  animation: slide-up 0.35s ease forwards;
+}
+
+.animate-slide-right {
+  animation: slide-right 0.3s ease forwards;
+}
+
+.animate-fade-in {
+  animation: fade-in 0.4s ease forwards;
+}
+
+.animate-ping-slow {
+  animation: ping-slow 2s cubic-bezier(0, 0, 0.2, 1) infinite;
+}
+
+.animate-glow-critical {
+  animation: glow-pulse 2s ease-in-out infinite;
+}
+
+.font-rajdhani {
+  font-family: 'Rajdhani', sans-serif;
+}
+
+.font-mono-data {
+  font-family: 'JetBrains Mono', monospace;
+}
+
+.graph-node {
+  cursor: pointer;
+  transition: filter 0.2s;
+}
+
+.graph-node:hover {
+  filter: brightness(1.4);
+}
+
+.graph-edge {
+  stroke-dasharray: 1000;
+  animation: draw-line 0.8s ease forwards;
+}
+
+.scanline-overlay::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: repeating-linear-gradient(
+    to bottom,
+    transparent 0px,
+    transparent 2px,
+    rgba(0, 0, 0, 0.06) 2px,
+    rgba(0, 0, 0, 0.06) 4px
+  );
+  pointer-events: none;
+  border-radius: inherit;
+}
+
+.grid-bg {
+  background-image: linear-gradient(rgba(30, 30, 42, 0.5) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(30, 30, 42, 0.5) 1px, transparent 1px);
+  background-size: 40px 40px;
+}
