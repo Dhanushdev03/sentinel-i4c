@@ -982,6 +982,32 @@ function buildAudit(): AuditEntry[] {
 
 export const AUDIT_LOG: AuditEntry[] = buildAudit()
 
+export function logAuditEvent(entry: {
+  eventType: AuditEntry['eventType']
+  userId: string
+  caseId?: string
+  action: string
+  details: string
+  ipAddress?: string
+}) {
+  const lastEntry = AUDIT_LOG[AUDIT_LOG.length - 1]
+  const prevHash = lastEntry ? lastEntry.hash : '0000000000000000000000000000000000000000000000000000000000000000'
+  const ts = new Date().toISOString()
+  const hash = makeHash(`${entry.eventType}|${entry.userId}|${ts}|${prevHash}|${entry.action}`)
+  AUDIT_LOG.push({
+    id: `AUD-${(AUDIT_LOG.length + 1).toString().padStart(6, '0')}`,
+    eventType: entry.eventType,
+    userId: entry.userId,
+    caseId: entry.caseId,
+    action: entry.action,
+    timestamp: ts,
+    details: entry.details,
+    hash,
+    previousHash: prevHash,
+    ipAddress: entry.ipAddress || '10.0.1.42',
+  })
+}
+
 export const ANALYTICS: AnalyticsMetric[] = [
   { date: '2024-03-01', top1Accuracy: 0.48, top3Accuracy: 0.72, hitRate: 0.52, falsePositiveRate: 0.18, medianSpatialErrorKm: 4.2, medianTimeErrorMin: 8.4, brierScore: 0.22, casesEvaluated: 12 },
   { date: '2024-03-03', top1Accuracy: 0.51, top3Accuracy: 0.74, hitRate: 0.54, falsePositiveRate: 0.17, medianSpatialErrorKm: 3.9, medianTimeErrorMin: 7.8, brierScore: 0.21, casesEvaluated: 15 },

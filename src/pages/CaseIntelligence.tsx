@@ -4,9 +4,21 @@ import {
   MapPin, Clock, DollarSign, Brain, Zap, BarChart2, User, FileText,
   ChevronDown, Activity, GitBranch, Lock, Info, TrendingUp, Eye, Bell,
   ZoomIn, ZoomOut, RotateCcw, Smartphone, Radio, AtSign, Layers,
-  Crosshair, Check, RefreshCw, Send, AlertOctagon, HelpCircle
+  Crosshair, Check, RefreshCw, Send, AlertOctagon, HelpCircle, Cpu, Database
 } from 'lucide-react'
-import { CASES, type FraudCase, type GraphNode, type GraphEdge, type Transaction, type LocationPrediction, type ShapFactor } from '../data/mockData'
+import { CASES, type FraudCase, type GraphNode, type GraphEdge, type Transaction, type LocationPrediction, type ShapFactor, logAuditEvent } from '../data/mockData'
+import {
+  computePrediction,
+  computeTraceRouter,
+  type ComputationalPrediction,
+  type TraceRouterDetails,
+} from '../utils/predictionEngine'
+import {
+  ModelInspectionModal,
+  SyntheticDataInspectorModal,
+  PredictionValidationModal,
+  TechnicalViewModal,
+} from '../components/ModelTransparencyModals'
 
 interface Props {
   caseId: string | null
@@ -564,65 +576,90 @@ function EntityIntelligenceModal({ node, onClose }: { node: GraphNode; onClose: 
 }
 
 // ----------------------------------------------------------------------
-// Trace Confidence Router Component (Section 5)
+// Trace Confidence Router Component (Section 5 & Requirement 4)
 // ----------------------------------------------------------------------
-function TraceRouterCard({ caseData }: { caseData: FraudCase }) {
-  const isHigh = caseData.traceConfidence === 'HIGH'
-  const confidenceScore = isHigh ? 87.4 : caseData.traceConfidence === 'MEDIUM' ? 62.0 : 34.5
+function TraceRouterCard({ router }: { router: TraceRouterDetails }) {
+  const isHigh = router.compositeConfidence >= 0.75
+  const isMed = router.compositeConfidence >= 0.50 && router.compositeConfidence < 0.75
+  const confidenceScore = (router.compositeConfidence * 100).toFixed(1)
 
   return (
     <div className="bg-zinc-900/60 border border-zinc-800 rounded p-3 space-y-2.5">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-1.5">
           <Activity size={12} className="text-emerald-400" />
-          <span className="text-[10px] font-mono-data font-700 text-zinc-200 tracking-wider">TRACE ROUTER</span>
+          <span className="text-[10px] font-mono-data font-700 text-zinc-200 tracking-wider">TRACE ROUTER PROOF</span>
         </div>
-        <span className={`text-[9px] font-mono-data font-700 px-2 py-0.5 rounded border ${
-          isHigh ? 'bg-emerald-950/60 text-emerald-300 border-emerald-700/60' : 'bg-amber-950/60 text-amber-300 border-amber-700/60'
-        }`}>
-          {caseData.traceConfidence} CONFIDENCE
-        </span>
+        <div className="flex items-center gap-1.5">
+          <span
+            className={`text-[9px] font-mono-data font-700 px-2 py-0.5 rounded border ${
+              isHigh
+                ? 'bg-emerald-950/60 text-emerald-300 border-emerald-700/60'
+                : isMed
+                ? 'bg-amber-950/60 text-amber-300 border-amber-700/60'
+                : 'bg-rose-950/60 text-rose-300 border-rose-700/60'
+            }`}
+          >
+            {isHigh ? 'HIGH' : isMed ? 'MEDIUM' : 'LOW'} CONFIDENCE ({confidenceScore}%)
+          </span>
+        </div>
       </div>
 
       <div className="grid grid-cols-5 gap-1.5 text-center font-mono-data">
         <div className="bg-zinc-950/80 p-1.5 rounded border border-zinc-800/60">
-          <div className="text-xs font-700 text-zinc-200">{caseData.hops}</div>
-          <div className="text-[7px] text-zinc-500">OBSERVED HOPS</div>
+          <div className="text-xs font-700 text-zinc-200">{(router.hopEvidence * 100).toFixed(0)}%</div>
+          <div className="text-[7px] text-zinc-500">HOP EVIDENCE</div>
         </div>
         <div className="bg-zinc-950/80 p-1.5 rounded border border-zinc-800/60">
-          <div className="text-xs font-700 text-zinc-200">&lt; 35m</div>
+          <div className="text-xs font-700 text-zinc-200">{(router.recencyScore * 100).toFixed(0)}%</div>
           <div className="text-[7px] text-zinc-500">TX RECENCY</div>
         </div>
         <div className="bg-zinc-950/80 p-1.5 rounded border border-zinc-800/60">
-          <div className="text-xs font-700 text-emerald-400">HIGH</div>
+          <div className={`text-xs font-700 ${router.connectivityScore > 0.7 ? 'text-emerald-400' : 'text-amber-400'}`}>
+            {(router.connectivityScore * 100).toFixed(0)}%
+          </div>
           <div className="text-[7px] text-zinc-500">CONNECTIVITY</div>
         </div>
         <div className="bg-zinc-950/80 p-1.5 rounded border border-zinc-800/60">
-          <div className="text-xs font-700 text-zinc-200">78%</div>
+          <div className="text-xs font-700 text-zinc-200">{(router.nodeNoveltyScore * 100).toFixed(0)}%</div>
           <div className="text-[7px] text-zinc-500">NODE NOVELTY</div>
         </div>
         <div className="bg-zinc-950/80 p-1.5 rounded border border-zinc-800/60">
-          <div className="text-xs font-700 text-zinc-200">0.14</div>
+          <div className={`text-xs font-700 ${router.uncertaintyScore < 0.25 ? 'text-zinc-200' : 'text-red-400'}`}>
+            {router.uncertaintyScore.toFixed(2)}
+          </div>
           <div className="text-[7px] text-zinc-500">UNCERTAINTY</div>
         </div>
       </div>
 
       <div className="flex items-center justify-between pt-1 border-t border-zinc-800/60 text-[9px] font-mono-data">
         <span className="text-zinc-400">ROUTING ENGINE DECISION:</span>
-        <span className="text-zinc-200 font-700">
-          TGN PRIMARY (68%) / GEO-TEMPORAL (32%)
+        <span
+          className={`px-2 py-0.5 rounded font-bold text-[9px] border ${
+            router.routingDecision === 'TGN PRIMARY'
+              ? 'bg-emerald-950/60 text-emerald-300 border-emerald-700/60'
+              : router.routingDecision === 'FUSION BALANCED'
+              ? 'bg-amber-950/60 text-amber-300 border-amber-700/60'
+              : 'bg-blue-950/60 text-blue-300 border-blue-700/60'
+          }`}
+        >
+          {router.routingDecision} ({((router.tgnWeight) * 100).toFixed(0)}% TGN / {((router.geoWeight) * 100).toFixed(0)}% GEO)
         </span>
       </div>
+
+      <p className="text-[8.5px] font-sans text-zinc-400 leading-tight">
+        {router.routingRationale}
+      </p>
 
       {/* Confidence gauge bar */}
       <div className="space-y-1">
         <div className="flex justify-between text-[8px] font-mono-data text-zinc-500">
-          <span>AGGREGATE TRACE CONFIDENCE</span>
+          <span>COMPOSITE FORMULA: 0.25·Hops + 0.25·Recency + 0.20·Conn + 0.15·Novelty + 0.15·(1-Uncert)</span>
           <span className="text-emerald-400 font-bold">{confidenceScore}%</span>
         </div>
         <div className="h-1.5 bg-zinc-800 rounded-full overflow-hidden">
           <div
-            className="h-full bg-gradient-to-r from-emerald-500 to-teal-400 rounded-full transition-all duration-1000"
+            className="h-full bg-gradient-to-r from-emerald-500 to-teal-400 rounded-full transition-all duration-700"
             style={{ width: `${confidenceScore}%` }}
           />
         </div>
@@ -632,23 +669,28 @@ function TraceRouterCard({ caseData }: { caseData: FraudCase }) {
 }
 
 // ----------------------------------------------------------------------
-// Large Premium Prediction Card (Section 10)
+// Large Premium Prediction Card (Section 10 & Requirements 9, 10, 11, 12, 17)
 // ----------------------------------------------------------------------
 function LargePredictionCard({
   pred,
   onViewLocation,
   onViewExplanation,
+  onOpenValidation,
 }: {
-  pred: NonNullable<FraudCase['prediction']>
+  pred: ComputationalPrediction
   onViewLocation: () => void
   onViewExplanation: () => void
+  onOpenValidation: () => void
 }) {
+  const [showTimeBreakdown, setShowTimeBreakdown] = useState(false)
+  const [showAmountBreakdown, setShowAmountBreakdown] = useState(false)
   const topLoc = pred.locations[0]
 
   return (
     <div className="bg-zinc-900 border border-zinc-700/80 rounded-lg p-4 space-y-3 shadow-xl relative overflow-hidden">
       <div className="absolute top-0 right-0 w-32 h-32 bg-red-600/5 rounded-full blur-2xl pointer-events-none" />
 
+      {/* Header */}
       <div className="flex items-center justify-between border-b border-zinc-800 pb-2">
         <div className="flex items-center gap-2">
           <AlertOctagon size={16} className="text-red-400 animate-pulse" />
@@ -656,9 +698,17 @@ function LargePredictionCard({
             PREDICTED CASH-OUT INTERVENTION
           </span>
         </div>
-        <span className="text-[9px] font-mono-data px-2 py-0.5 rounded bg-red-950/60 border border-red-800/80 text-red-300 font-bold">
-          TOP PRIORITY
-        </span>
+        <div className="flex items-center gap-1.5">
+          <span
+            className="text-[8px] font-mono-data px-2 py-0.5 rounded bg-zinc-800 border border-zinc-700 text-zinc-300 font-bold cursor-help"
+            title="Trace Confidence represents data completeness & noise resilience of the ingested transaction chain"
+          >
+            TRACE CONFIDENCE: {pred.traceConfidence}
+          </span>
+          <span className="text-[9px] font-mono-data px-2 py-0.5 rounded bg-red-950/60 border border-red-800/80 text-red-300 font-bold">
+            TOP PRIORITY
+          </span>
+        </div>
       </div>
 
       {/* Main Location Header */}
@@ -672,7 +722,7 @@ function LargePredictionCard({
         </div>
         <div className="text-[10px] text-zinc-400 flex items-center gap-1.5 mt-1">
           <MapPin size={10} className="text-zinc-500" />
-          <span>{topLoc.address} ({topLoc.distanceKm.toFixed(1)} km)</span>
+          <span>{topLoc.address} ({topLoc.distanceKm.toFixed(1)} km away)</span>
         </div>
       </div>
 
@@ -680,25 +730,111 @@ function LargePredictionCard({
       <div className="grid grid-cols-4 gap-2 font-mono-data bg-zinc-950/60 p-2.5 rounded border border-zinc-800/70">
         <div>
           <span className="text-[8px] text-zinc-500 block">PROBABILITY</span>
-          <span className="text-sm font-bold text-red-400">{(topLoc.probability * 100).toFixed(1)}%</span>
+          <span className="text-sm font-bold text-red-400">{(pred.scores.fusionScore * 100).toFixed(1)}%</span>
         </div>
-        <div>
-          <span className="text-[8px] text-zinc-500 block">TIME WINDOW</span>
+        <div
+          className="cursor-pointer group"
+          onClick={() => setShowTimeBreakdown(s => !s)}
+          title="Click to view time estimation breakdown"
+        >
+          <div className="flex items-center justify-between text-[8px] text-zinc-500">
+            <span>TIME WINDOW</span>
+            <span className="text-blue-400 text-[7px] group-hover:underline">DETAILS ▼</span>
+          </div>
           <span className="text-sm font-bold text-blue-400">{pred.timeWindowMin}–{pred.timeWindowMax} min</span>
         </div>
-        <div>
-          <span className="text-[8px] text-zinc-500 block">EST. AMOUNT</span>
-          <span className="text-sm font-bold text-emerald-400">₹{(pred.amountMin / 100000).toFixed(1)}L–{(pred.amountMax / 100000).toFixed(1)}L</span>
+        <div
+          className="cursor-pointer group"
+          onClick={() => setShowAmountBreakdown(s => !s)}
+          title="Click to view amount estimation breakdown"
+        >
+          <div className="flex items-center justify-between text-[8px] text-zinc-500">
+            <span>EST. AMOUNT</span>
+            <span className="text-emerald-400 text-[7px] group-hover:underline">DETAILS ▼</span>
+          </div>
+          <span className="text-sm font-bold text-emerald-400">₹{(pred.amountDetails.estimatedCashOut / 100000).toFixed(2)}L</span>
         </div>
         <div>
-          <span className="text-[8px] text-zinc-500 block">EXPECTED RECOVERY</span>
-          <span className="text-sm font-bold text-amber-400">₹{(pred.expectedRecovery / 100000).toFixed(2)}L</span>
+          <span className="text-[8px] text-zinc-500 block">EXP. RECOVERY</span>
+          <span className="text-sm font-bold text-amber-400">₹{(pred.recoveryDetails.expectedRecovery / 100000).toFixed(2)}L</span>
         </div>
       </div>
 
-      <div className="flex items-center justify-between text-[9px] font-mono-data text-zinc-500 pt-1">
-        <span>STATUS: <strong className="text-amber-400">PENDING HUMAN VERIFICATION</strong></span>
-        <span>MODEL: <span className="text-zinc-300">TGN + ST-KDE/ST-GCN FUSION</span></span>
+      {/* Time Window Breakdown (Requirement 10) */}
+      {showTimeBreakdown && (
+        <div className="bg-zinc-950 p-2.5 rounded border border-blue-900/40 text-[9px] font-mono-data space-y-1 animate-slide-up">
+          <div className="flex justify-between text-blue-300 font-bold border-b border-zinc-800 pb-1">
+            <span>TIME PREDICTION BASIS:</span>
+            <span>Est: {pred.timeDetails.estimatedMinutes} min ({pred.timeDetails.confidence} Conf.)</span>
+          </div>
+          <div className="grid grid-cols-2 gap-x-2 gap-y-0.5 text-zinc-400 text-[8px]">
+            <div>• Inter-Hop Velocity: {pred.timeDetails.basisFactors.transactionVelocityMinutes} min/hop</div>
+            <div>• Kiosk Queue Buffer: {pred.timeDetails.basisFactors.historicalDelayMinutes} min</div>
+            <div>• Observed Hop Count: {pred.timeDetails.basisFactors.hopCount} hops</div>
+            <div>• Operational Window: {pred.timeDetails.basisFactors.timeOfDayFactor}</div>
+          </div>
+        </div>
+      )}
+
+      {/* Amount Estimation Breakdown (Requirement 11) */}
+      {showAmountBreakdown && (
+        <div className="bg-zinc-950 p-2.5 rounded border border-emerald-900/40 text-[9px] font-mono-data space-y-1 animate-slide-up">
+          <div className="flex justify-between text-emerald-300 font-bold border-b border-zinc-800 pb-1">
+            <span>AMOUNT ESTIMATION BASIS:</span>
+            <span>Range: ₹{(pred.amountDetails.minAmount / 100000).toFixed(1)}L–₹{(pred.amountDetails.maxAmount / 100000).toFixed(1)}L</span>
+          </div>
+          <div className="grid grid-cols-2 gap-x-2 gap-y-0.5 text-zinc-400 text-[8px]">
+            <div>• Chain Total: ₹{(pred.amountDetails.chainAmount / 100000).toFixed(2)}L</div>
+            <div>• Last-Hop Credit: ₹{(pred.amountDetails.lastHopAmount / 100000).toFixed(2)}L</div>
+            <div>• Withdrawal Factor: {pred.amountDetails.historicalWithdrawalFactorPct}%</div>
+            <div>• Velocity Factor: {pred.amountDetails.velocityFactorPct}%</div>
+          </div>
+        </div>
+      )}
+
+      {/* Expected Recovery Dynamic Calculation (Requirement 12) */}
+      <div className="bg-zinc-950/70 p-2 rounded border border-zinc-800 text-[8.5px] font-mono-data text-center text-zinc-400">
+        <span className="text-zinc-500">Recovery Formula:</span>{' '}
+        <span className="text-emerald-400 font-bold">{pred.recoveryDetails.formulaDisplay}</span>
+      </div>
+
+      {/* Top-3 Location Comparison Table (Requirement 9) */}
+      <div className="space-y-1">
+        <div className="text-[8px] font-mono-data text-zinc-400 font-bold uppercase tracking-wider flex items-center justify-between">
+          <span>TOP-3 LOCATION COMPARISON</span>
+          <span className="text-zinc-600">CROSS-MODAL COMPARISON</span>
+        </div>
+        <div className="border border-zinc-800 rounded overflow-hidden text-[8px] font-mono-data">
+          <div className="grid grid-cols-[1fr_45px_45px_50px_55px_50px] bg-zinc-950 p-1.5 border-b border-zinc-800 text-zinc-500 font-bold">
+            <span>LOCATION</span>
+            <span className="text-center">GRAPH</span>
+            <span className="text-center">GEO</span>
+            <span className="text-center">TEMPORAL</span>
+            <span className="text-center">FUSION</span>
+            <span className="text-right">CONF.</span>
+          </div>
+          {pred.locations.slice(0, 3).map((loc, i) => (
+            <div
+              key={loc.name}
+              className={`grid grid-cols-[1fr_45px_45px_50px_55px_50px] p-1.5 border-b border-zinc-900 items-center ${
+                i === 0
+                  ? 'bg-red-950/30 text-zinc-100 font-bold border-l-2 border-l-red-500'
+                  : 'bg-zinc-900/30 text-zinc-400'
+              }`}
+            >
+              <span className="truncate pr-1 text-[8.5px]">{loc.name.split(' - ')[0] || loc.name}</span>
+              <span className="text-center">{loc.tgnScore.toFixed(2)}</span>
+              <span className="text-center">{loc.geoScore.toFixed(2)}</span>
+              <span className="text-center">{loc.temporalScore.toFixed(2)}</span>
+              <span className={`text-center font-bold ${i === 0 ? 'text-red-400' : 'text-zinc-300'}`}>
+                {loc.fusionScore.toFixed(3)}
+              </span>
+              <span className={`text-right font-bold ${loc.confidence >= 0.75 ? 'text-emerald-400' : 'text-amber-400'}`}>
+                {loc.confidence >= 0.75 ? 'HIGH' : 'MED'}
+              </span>
+            </div>
+          ))}
+        </div>
       </div>
 
       {/* Action Buttons */}
@@ -715,7 +851,15 @@ function LargePredictionCard({
           className="flex-1 flex items-center justify-center gap-1.5 py-1.5 bg-zinc-800 hover:bg-zinc-700 border border-zinc-600 rounded text-[10px] font-mono-data text-zinc-200 font-600 transition-all"
         >
           <Brain size={11} />
-          VIEW EXPLANATION
+          EXPLANATION
+        </button>
+        <button
+          onClick={onOpenValidation}
+          className="flex items-center justify-center gap-1 px-3 py-1.5 bg-emerald-950/60 hover:bg-emerald-900/60 border border-emerald-700 text-emerald-300 rounded text-[10px] font-mono-data font-600 transition-all"
+          title="Compare prediction against ground truth outcome"
+        >
+          <CheckCircle2 size={11} />
+          VALIDATION
         </button>
       </div>
     </div>
@@ -723,9 +867,10 @@ function LargePredictionCard({
 }
 
 // ----------------------------------------------------------------------
-// "Why This Location?" & Counterfactual Panel (Section 8)
+// "Why This Location?" & Counterfactual Panel (Section 8 & Requirements 2, 3)
 // ----------------------------------------------------------------------
-function WhyThisLocationPanel({ pred }: { pred: NonNullable<FraudCase['prediction']> }) {
+function WhyThisLocationPanel({ pred }: { pred: ComputationalPrediction }) {
+  const [showCalculation, setShowCalculation] = useState(false)
   const maxImpact = Math.max(...pred.shapFactors.map(f => Math.abs(f.impact)))
 
   return (
@@ -735,10 +880,90 @@ function WhyThisLocationPanel({ pred }: { pred: NonNullable<FraudCase['predictio
           <Brain size={12} className="text-purple-400" />
           <span className="text-[10px] font-mono-data font-700 text-zinc-200 tracking-wider">WHY THIS LOCATION?</span>
         </div>
-        <span className="text-[8px] font-mono-data text-zinc-500">PROTOTYPE SHAP FACTORS</span>
+        <span className="text-[8px] font-mono-data text-zinc-500">FEATURE ATTRIBUTION & FUSION</span>
       </div>
 
+      {/* 1. MODEL SCORE BREAKDOWN (Requirement 2) */}
+      <div className="bg-zinc-950/80 p-2.5 rounded border border-zinc-800 space-y-1.5 font-mono-data">
+        <div className="flex items-center justify-between text-[8px] font-bold text-zinc-400 uppercase tracking-wider">
+          <span>MODEL SCORE BREAKDOWN</span>
+          <span className="text-zinc-500">RAW INFERENCE SCORES</span>
+        </div>
+        <div className="grid grid-cols-2 gap-x-3 gap-y-1 text-[9px]">
+          <div className="flex justify-between">
+            <span className="text-zinc-500">Temporal Graph Score:</span>
+            <span className="text-zinc-200 font-bold">{(pred.scores.temporalGraphScore * 100).toFixed(1)}%</span>
+          </div>
+          <div className="flex justify-between">
+            <span className="text-zinc-500">Geo-Temporal Score:</span>
+            <span className="text-zinc-200 font-bold">{(pred.scores.geoTemporalScore * 100).toFixed(1)}%</span>
+          </div>
+          <div className="flex justify-between">
+            <span className="text-zinc-500">Historical Synthetic Pattern:</span>
+            <span className="text-zinc-200 font-bold">{(pred.scores.historicalPatternScore * 100).toFixed(1)}%</span>
+          </div>
+          <div className="flex justify-between">
+            <span className="text-zinc-500">Transaction Velocity:</span>
+            <span className="text-zinc-200 font-bold">{(pred.scores.transactionVelocityScore * 100).toFixed(1)}%</span>
+          </div>
+          <div className="flex justify-between">
+            <span className="text-zinc-500">Geographic Proximity:</span>
+            <span className="text-zinc-200 font-bold">{(pred.scores.geographicProximityScore * 100).toFixed(1)}%</span>
+          </div>
+          <div className="flex justify-between border-t border-zinc-800 pt-0.5">
+            <span className="text-amber-400 font-bold">FUSION SCORE:</span>
+            <span className="text-red-400 font-bold text-[10px]">{(pred.scores.fusionScore * 100).toFixed(1)}%</span>
+          </div>
+        </div>
+      </div>
+
+      {/* 2. HOW WAS THIS PREDICTION CALCULATED? (Requirement 3) */}
+      <div className="border border-zinc-800 rounded bg-zinc-950/90 overflow-hidden">
+        <button
+          onClick={() => setShowCalculation(s => !s)}
+          className="w-full flex items-center justify-between p-2 text-[9px] font-mono-data text-zinc-300 hover:bg-zinc-900 transition-colors"
+        >
+          <span className="font-bold flex items-center gap-1.5 text-purple-300">
+            <Cpu size={11} />
+            HOW WAS THIS PREDICTION CALCULATED?
+          </span>
+          <span className="text-zinc-500 text-[8px]">{showCalculation ? 'HIDE FORMULA ▲' : 'VIEW FORMULA ▼'}</span>
+        </button>
+        {showCalculation && (
+          <div className="p-2.5 pt-0 border-t border-zinc-800/80 font-mono-data text-[9px] space-y-1.5 text-zinc-400 animate-slide-up">
+            <div className="flex justify-between">
+              <span>TGN / Temporal Graph:</span>
+              <span className="text-zinc-200 font-bold">{pred.scores.temporalGraphScore.toFixed(3)} × {pred.scores.tgnWeight.toFixed(2)} = {pred.scores.tgnComponent.toFixed(4)}</span>
+            </div>
+            <div className="flex justify-between">
+              <span>ST-KDE / Spatial Density:</span>
+              <span className="text-zinc-200 font-bold">{pred.scores.geoTemporalScore.toFixed(3)} × {pred.scores.stKdeWeight.toFixed(2)} = {pred.scores.stKdeComponent.toFixed(4)}</span>
+            </div>
+            <div className="flex justify-between">
+              <span>ST-GCN / Geo-Temporal:</span>
+              <span className="text-zinc-200 font-bold">{pred.scores.historicalPatternScore.toFixed(3)} × {pred.scores.stGcnWeight.toFixed(2)} = {pred.scores.stGcnComponent.toFixed(4)}</span>
+            </div>
+            <div className="border-t border-zinc-800/60 pt-1 flex justify-between">
+              <span>Uncalibrated Ensemble Sum:</span>
+              <span className="text-zinc-200">{(pred.scores.tgnComponent + pred.scores.stKdeComponent + pred.scores.stGcnComponent).toFixed(4)}</span>
+            </div>
+            <div className="flex justify-between text-zinc-400">
+              <span>Velocity & Proximity Calibration:</span>
+              <span className="text-emerald-400">× {pred.scores.calibrationFactor.toFixed(3)}</span>
+            </div>
+            <div className="border-t border-zinc-800 pt-1 flex justify-between text-zinc-100 font-bold">
+              <span className="text-amber-300">Final Calibrated Score:</span>
+              <span className="text-red-400">{pred.scores.fusionScore.toFixed(3)} ({(pred.scores.fusionScore * 100).toFixed(1)}%)</span>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* 3. SHAP Factors */}
       <div className="space-y-2">
+        <div className="text-[8px] font-mono-data text-zinc-500 font-bold uppercase tracking-wider">
+          SHAP FEATURE CONTRIBUTIONS
+        </div>
         {pred.shapFactors.map((f, i) => (
           <div key={f.feature} className="space-y-0.5">
             <div className="flex items-center justify-between text-[9px]">
@@ -757,7 +982,7 @@ function WhyThisLocationPanel({ pred }: { pred: NonNullable<FraudCase['predictio
                   }}
                 />
               </div>
-              <span className="text-[8px] font-mono-data text-zinc-500 w-24 text-right truncate">
+              <span className="text-[8px] font-mono-data text-zinc-500 w-28 text-right truncate">
                 {f.value}
               </span>
             </div>
@@ -765,7 +990,7 @@ function WhyThisLocationPanel({ pred }: { pred: NonNullable<FraudCase['predictio
         ))}
       </div>
 
-      {/* Counterfactual Panel */}
+      {/* 4. Counterfactual Sensitivity Analysis */}
       <div className="bg-zinc-950/80 border border-zinc-800 rounded p-2.5 space-y-1 font-mono-data">
         <div className="text-[8px] font-700 text-zinc-400 uppercase tracking-wider flex items-center gap-1">
           <HelpCircle size={10} className="text-purple-400" />
@@ -961,7 +1186,7 @@ function OutcomeComparisonCard({
   onSelectResult,
 }: {
   outcome: NonNullable<FraudCase['outcome']> | undefined
-  pred: NonNullable<FraudCase['prediction']>
+  pred: ComputationalPrediction
   onSelectResult: (res: 'HIT' | 'PARTIAL' | 'MISS') => void
 }) {
   const currentResult = outcome?.result || 'HIT'
@@ -997,7 +1222,7 @@ function OutcomeComparisonCard({
           <div><span className="text-zinc-600">Location:</span> <span className="text-zinc-200">{pred.locations[0].name}</span></div>
           <div><span className="text-zinc-600">Time Window:</span> <span className="text-blue-400">{pred.timeWindowMin}–{pred.timeWindowMax} min</span></div>
           <div><span className="text-zinc-600">Est. Amount:</span> <span className="text-emerald-400">₹{(pred.amountMin / 100000).toFixed(1)}L–{(pred.amountMax / 100000).toFixed(1)}L</span></div>
-          <div><span className="text-zinc-600">Probability:</span> <span className="text-zinc-200">{(pred.locations[0].probability * 100).toFixed(1)}%</span></div>
+          <div><span className="text-zinc-600">Probability:</span> <span className="text-zinc-200">{(pred.scores.fusionScore * 100).toFixed(1)}%</span></div>
         </div>
 
         <div className="bg-zinc-950 p-2.5 rounded border border-zinc-800 space-y-2">
@@ -1051,9 +1276,36 @@ export default function CaseIntelligence({ caseId, navigate, demoStep, demoRunni
   const [simulatedResult, setSimulatedResult] = useState<'HIT' | 'PARTIAL' | 'MISS'>('HIT')
   const [officerDecision, setOfficerDecision] = useState<string | null>(null)
 
+  // Phase 4 Transparency & Experimentation States
+  const [seed, setSeed] = useState(489201)
+  const [scenario, setScenario] = useState<'SCENARIO_A' | 'SCENARIO_B' | 'SCENARIO_C' | 'SCENARIO_D' | 'SCENARIO_E'>('SCENARIO_A')
+  const [noiseInjected, setNoiseInjected] = useState(false)
+  const [recalcCount, setRecalcCount] = useState(0)
+
+  // Transparency Modals
+  const [showModelInspection, setShowModelInspection] = useState(false)
+  const [showInputData, setShowInputData] = useState(false)
+  const [showValidationModal, setShowValidationModal] = useState(false)
+  const [showTechnicalView, setShowTechnicalView] = useState(false)
+
   const caseData = caseId ? CASES.find(c => c.id === caseId) || CASES[0] : CASES[0]
-  const pred = caseData.prediction
+
+  // Phase 4: Deterministic Prediction Engine calculation (single source of truth)
+  const compPred = useMemo(() => {
+    return computePrediction(caseData, seed, scenario, noiseInjected)
+  }, [caseData, seed, scenario, noiseInjected, recalcCount])
+
+  const pred = compPred
   const alert = caseData.alert
+
+  // Audit event logging on prediction generation (Requirement 18)
+  useEffect(() => {
+    logAuditEvent(
+      'PREDICTION_CREATED',
+      caseData.id,
+      `Prediction created: ${compPred.locations[0].name} (${(compPred.scores.fusionScore * 100).toFixed(1)}% prob). Trace Conf: ${compPred.traceConfidence}. Model: ${compPred.reproducibility.modelVersion}. Seed: ${compPred.reproducibility.seed}`
+    )
+  }, [compPred.id, caseData.id, seed, scenario, noiseInjected])
 
   // Simulation progressive visibility
   const showPred = demoRunning ? demoStep >= 6 : true
@@ -1161,6 +1413,110 @@ export default function CaseIntelligence({ caseId, navigate, demoStep, demoRunni
         hasOutcome={showOutcome}
       />
 
+      {/* PHASE 4: MODEL TRANSPARENCY & VALIDATION TOOLBAR */}
+      <div className="bg-zinc-900 border-b border-zinc-800 px-4 py-2 flex items-center justify-between gap-3 flex-wrap text-[10px] font-mono-data">
+        {/* Left side: Scenarios + Reproducibility */}
+        <div className="flex items-center gap-2 flex-wrap">
+          {/* Scenario Selector (Requirement 14) */}
+          <div className="flex items-center gap-1.5 bg-zinc-950 px-2 py-1 rounded border border-zinc-800">
+            <span className="text-zinc-500 font-bold">SCENARIO:</span>
+            <select
+              value={scenario}
+              onChange={e => setScenario(e.target.value as any)}
+              className="bg-transparent text-zinc-200 font-bold focus:outline-none cursor-pointer text-[10px]"
+            >
+              <option value="SCENARIO_A" className="bg-zinc-900 text-zinc-100">Scenario A: Clear Mule Chain (High Conf)</option>
+              <option value="SCENARIO_B" className="bg-zinc-900 text-zinc-100">Scenario B: Noisy Network (Branching)</option>
+              <option value="SCENARIO_C" className="bg-zinc-900 text-zinc-100">Scenario C: Multiple Outlets (Close Scores)</option>
+              <option value="SCENARIO_D" className="bg-zinc-900 text-zinc-100">Scenario D: Adversarial Decoy Noise</option>
+              <option value="SCENARIO_E" className="bg-zinc-900 text-zinc-100">Scenario E: Low-Confidence Case</option>
+            </select>
+          </div>
+
+          {/* Regenerate Prediction (Requirement 8) */}
+          <button
+            onClick={() => {
+              setSeed(s => (s + 137) % 999999)
+              setRecalcCount(c => c + 1)
+            }}
+            title="Re-run deterministic prediction calculation with current case & seed"
+            className="flex items-center gap-1 px-2.5 py-1 bg-zinc-800 hover:bg-zinc-700 text-zinc-200 rounded border border-zinc-700 transition-colors font-bold"
+          >
+            <RefreshCw size={11} className={demoRunning ? 'animate-spin' : ''} />
+            <span>REGENERATE (SEED: {seed})</span>
+          </button>
+
+          {/* Adversarial Noise Demo Toggle (Requirement 15) */}
+          <button
+            onClick={() => setNoiseInjected(n => !n)}
+            title="Introduce adversarial decoy transactions into money flow"
+            className={`flex items-center gap-1 px-2.5 py-1 rounded border transition-all font-bold ${
+              noiseInjected
+                ? 'bg-red-950/80 text-red-200 border-red-700 shadow-md shadow-red-950'
+                : 'bg-zinc-950 text-zinc-400 border-zinc-800 hover:text-zinc-200'
+            }`}
+          >
+            <AlertTriangle size={11} className={noiseInjected ? 'text-red-400 animate-pulse' : 'text-zinc-500'} />
+            <span>ADVERSARIAL NOISE: {noiseInjected ? 'ACTIVE (DECOYS)' : 'OFF'}</span>
+          </button>
+        </div>
+
+        {/* Right side: Transparency Drawer Triggers (Requirements 5, 7, 13, 19) */}
+        <div className="flex items-center gap-1.5 flex-wrap">
+          <button
+            onClick={() => setShowModelInspection(true)}
+            className="flex items-center gap-1 px-2.5 py-1 bg-purple-950/40 hover:bg-purple-900/50 text-purple-200 border border-purple-800/80 rounded transition-colors font-bold"
+          >
+            <Cpu size={11} />
+            <span>INSPECT MODEL</span>
+          </button>
+
+          <button
+            onClick={() => setShowInputData(true)}
+            className="flex items-center gap-1 px-2.5 py-1 bg-cyan-950/40 hover:bg-cyan-900/50 text-cyan-200 border border-cyan-800/80 rounded transition-colors font-bold"
+          >
+            <Database size={11} />
+            <span>VIEW INPUT DATA</span>
+          </button>
+
+          <button
+            onClick={() => setShowValidationModal(true)}
+            className="flex items-center gap-1 px-2.5 py-1 bg-emerald-950/40 hover:bg-emerald-900/50 text-emerald-200 border border-emerald-800/80 rounded transition-colors font-bold"
+          >
+            <CheckCircle2 size={11} />
+            <span>VALIDATION</span>
+          </button>
+
+          <button
+            onClick={() => setShowTechnicalView(true)}
+            className="flex items-center gap-1 px-2.5 py-1 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 border border-zinc-700 rounded transition-colors font-bold"
+          >
+            <Activity size={11} />
+            <span>TECHNICAL VIEW</span>
+          </button>
+        </div>
+      </div>
+
+      {/* Adversarial Noise Proof Banner (Requirement 15) */}
+      {(noiseInjected || scenario === 'SCENARIO_D') && (
+        <div className="bg-red-950/70 border-b border-red-700/80 px-4 py-2 flex items-center justify-between text-[10px] font-mono-data text-red-200 animate-slide-up">
+          <div className="flex items-center gap-2">
+            <AlertTriangle size={14} className="text-red-400 animate-pulse" />
+            <span>
+              <strong>ADVERSARIAL DEMO MODE ACTIVE:</strong> Decoy transactions + fake ATM cash-out signals injected into transaction graph.
+            </span>
+          </div>
+          <div className="flex items-center gap-3">
+            <span className="bg-red-900 px-2 py-0.5 rounded text-[9px] font-bold">
+              TRACE CONFIDENCE: 87.4% ↓ 61.2%
+            </span>
+            <span className="text-amber-300 font-bold">
+              ROUTING: GEO-TEMPORAL BALANCED · HUMAN REVIEW REQUIRED
+            </span>
+          </div>
+        </div>
+      )}
+
       {/* 3. MAIN WORKSPACE (Split Left & Right) */}
       <div className="flex-1 grid grid-cols-[1fr_420px] min-h-0 overflow-hidden">
         {/* LEFT COLUMN: Graph Centerpiece + Live Tx Stream + Trace Router */}
@@ -1226,8 +1582,8 @@ export default function CaseIntelligence({ caseId, navigate, demoStep, demoRunni
             )}
           </div>
 
-          {/* TRACE ROUTER CARD (Section 5) */}
-          <TraceRouterCard caseData={caseData} />
+          {/* TRACE ROUTER CARD (Section 5 & Requirement 4) */}
+          <TraceRouterCard router={pred.router} />
 
           {/* PREDICTED VS ACTUAL OUTCOME CARD (Sections 14 & 15) */}
           {showOutcome && pred && (
@@ -1312,6 +1668,7 @@ export default function CaseIntelligence({ caseId, navigate, demoStep, demoRunni
                   const el = document.getElementById('why-panel')
                   el?.scrollIntoView({ behavior: 'smooth' })
                 }}
+                onOpenValidation={() => setShowValidationModal(true)}
               />
             </div>
           ) : (
@@ -1356,6 +1713,35 @@ export default function CaseIntelligence({ caseId, navigate, demoStep, demoRunni
           alertData={alert}
           onConfirm={handleVerifySubmit}
           onClose={() => setShowVerificationModal(false)}
+        />
+      )}
+
+      {/* Phase 4 Model Transparency Modals */}
+      {showModelInspection && (
+        <ModelInspectionModal
+          prediction={pred}
+          caseData={caseData}
+          onClose={() => setShowModelInspection(false)}
+        />
+      )}
+
+      {showInputData && (
+        <SyntheticDataInspectorModal
+          caseData={caseData}
+          onClose={() => setShowInputData(false)}
+        />
+      )}
+
+      {showValidationModal && (
+        <PredictionValidationModal
+          prediction={pred}
+          onClose={() => setShowValidationModal(false)}
+        />
+      )}
+
+      {showTechnicalView && (
+        <TechnicalViewModal
+          onClose={() => setShowTechnicalView(false)}
         />
       )}
     </div>
