@@ -130,7 +130,8 @@ function createSeededRandom(seed: number) {
  */
 export function computeTraceRouter(
   caseData: FraudCase,
-  noiseInjected = false
+  noiseInjected = false,
+  scenario: 'SCENARIO_A' | 'SCENARIO_B' | 'SCENARIO_C' | 'SCENARIO_D' | 'SCENARIO_E' = 'SCENARIO_A'
 ): TraceRouterDetails {
   const isDemo = caseData.id === 'CASE-SNTL-2026-0042' || caseData.id.includes('0042')
   const hops = caseData.hops || (caseData.transactions.length > 0 ? Math.max(...caseData.transactions.map(t => t.hop)) : 3)
@@ -141,27 +142,25 @@ export function computeTraceRouter(
   let nodeNoveltyScore = 0.78
   let uncertaintyScore = 0.14
 
-  if (noiseInjected) {
-    // Adversarial noise / decoy transactions degradation (Section 15)
-    hopEvidence = 0.72
-    recencyScore = 0.79
-    connectivityScore = 0.52
-    nodeNoveltyScore = 0.65
-    uncertaintyScore = 0.46 // Entropy jumps up
-  } else if (!isDemo) {
-    if (caseData.traceConfidence === 'LOW') {
-      hopEvidence = 0.42
-      recencyScore = 0.51
-      connectivityScore = 0.38
-      nodeNoveltyScore = 0.44
-      uncertaintyScore = 0.68
-    } else if (caseData.traceConfidence === 'MEDIUM') {
-      hopEvidence = 0.68
-      recencyScore = 0.71
-      connectivityScore = 0.64
-      nodeNoveltyScore = 0.69
-      uncertaintyScore = 0.35
-    }
+  if (noiseInjected || scenario === 'SCENARIO_D') {
+    // Adversarial noise / decoy transactions degradation (Section 15: 87% -> 61%)
+    hopEvidence = 0.66
+    recencyScore = 0.73
+    connectivityScore = 0.49
+    nodeNoveltyScore = 0.61
+    uncertaintyScore = 0.51 // Composite = 0.611 (~61%)
+  } else if (scenario === 'SCENARIO_E' || (!isDemo && caseData.traceConfidence === 'LOW')) {
+    hopEvidence = 0.42
+    recencyScore = 0.51
+    connectivityScore = 0.38
+    nodeNoveltyScore = 0.44
+    uncertaintyScore = 0.68 // Composite = 0.449 (<0.50 -> LOW)
+  } else if (scenario === 'SCENARIO_B' || scenario === 'SCENARIO_C' || (!isDemo && caseData.traceConfidence === 'MEDIUM')) {
+    hopEvidence = 0.68
+    recencyScore = 0.71
+    connectivityScore = 0.64
+    nodeNoveltyScore = 0.69
+    uncertaintyScore = 0.35 // Composite = 0.643 (MEDIUM)
   }
 
   // Computational weighted trace confidence
@@ -181,17 +180,17 @@ export function computeTraceRouter(
   let geoWeight: number
   let routingRationale: string
 
-  if (compositeConfidence >= 0.75 && !noiseInjected) {
+  if (compositeConfidence >= 0.75 && !noiseInjected && scenario !== 'SCENARIO_D') {
     routingDecision = 'TGN PRIMARY'
     tgnWeight = 0.68
     geoWeight = 0.32
     routingRationale = 'High trace confidence (≥75%): Clear sequential mule transfer topology detected. Prioritizing Temporal Graph Network propagation (68%) over Spatial Density (32%).'
-  } else if (compositeConfidence >= 0.50 || noiseInjected) {
+  } else if (compositeConfidence >= 0.50 || noiseInjected || scenario === 'SCENARIO_D') {
     routingDecision = 'FUSION BALANCED'
     tgnWeight = 0.50
     geoWeight = 0.50
-    routingRationale = noiseInjected
-      ? 'Adversarial decoy noise detected: Fan-out ratio increased and uncertainty entropy reached 0.46. Trace confidence degraded to 61%. Model downgraded to balanced ensemble; human authorization required.'
+    routingRationale = (noiseInjected || scenario === 'SCENARIO_D')
+      ? 'Adversarial decoy noise detected: Fan-out ratio increased and uncertainty entropy reached 0.51. Trace confidence degraded to 61%. Model downgraded to balanced ensemble; human authorization required.'
       : 'Medium trace confidence (50%–75%): Moderate graph branching or time delta observed. Equal weighting applied to Temporal Graph (50%) and Geo-Temporal Kernel Density (50%).'
   } else {
     routingDecision = 'GEO-TEMPORAL PRIMARY'
@@ -228,7 +227,7 @@ export function computePrediction(
 
   // 1. Trace Router
   const effectiveNoise = noiseInjected || scenario === 'SCENARIO_D'
-  const router = computeTraceRouter(caseData, effectiveNoise)
+  const router = computeTraceRouter(caseData, effectiveNoise, scenario)
 
   // 2. Score Breakdown
   let temporalGraphScore: number
@@ -238,29 +237,22 @@ export function computePrediction(
   let geographicProximityScore: number
   let finalProbability: number
 
-  if (isDemo && !effectiveNoise) {
-    temporalGraphScore = 0.682
-    geoTemporalScore = 0.814
-    historicalPatternScore = 0.748
-    transactionVelocityScore = 0.821
-    geographicProximityScore = 0.763
-    finalProbability = 0.874
-  } else if (effectiveNoise) {
-    // Adversarial / noisy behavior
+  if (scenario === 'SCENARIO_E') {
+    // Low confidence scenario (Requirement 14: should NOT produce an artificially high 90%+ prediction)
+    temporalGraphScore = Number((0.320 + (rng() - 0.5) * 0.04).toFixed(3))
+    geoTemporalScore = Number((0.410 + (rng() - 0.5) * 0.04).toFixed(3))
+    historicalPatternScore = Number((0.360 + (rng() - 0.5) * 0.04).toFixed(3))
+    transactionVelocityScore = Number((0.390 + (rng() - 0.5) * 0.04).toFixed(3))
+    geographicProximityScore = Number((0.440 + (rng() - 0.5) * 0.04).toFixed(3))
+    finalProbability = Number((0.345 + (rng() - 0.5) * 0.03).toFixed(3))
+  } else if (effectiveNoise || scenario === 'SCENARIO_D') {
+    // Adversarial / noisy behavior (Requirement 15: confidence 61%)
     temporalGraphScore = 0.512
     geoTemporalScore = 0.694
     historicalPatternScore = 0.582
     transactionVelocityScore = 0.640
     geographicProximityScore = 0.620
     finalProbability = 0.612
-  } else if (scenario === 'SCENARIO_E' || caseData.traceConfidence === 'LOW') {
-    // Low confidence scenario
-    temporalGraphScore = 0.320
-    geoTemporalScore = 0.410
-    historicalPatternScore = 0.360
-    transactionVelocityScore = 0.390
-    geographicProximityScore = 0.440
-    finalProbability = 0.345
   } else if (scenario === 'SCENARIO_C') {
     // Multiple split cash-out locations
     temporalGraphScore = 0.580
@@ -269,14 +261,42 @@ export function computePrediction(
     transactionVelocityScore = 0.620
     geographicProximityScore = 0.590
     finalProbability = 0.521
+  } else if (scenario === 'SCENARIO_B') {
+    // Noisy transaction network
+    temporalGraphScore = Number((0.620 + (rng() - 0.5) * 0.06).toFixed(3))
+    geoTemporalScore = Number((0.710 + (rng() - 0.5) * 0.06).toFixed(3))
+    historicalPatternScore = Number((0.650 + (rng() - 0.5) * 0.06).toFixed(3))
+    transactionVelocityScore = Number((0.740 + (rng() - 0.5) * 0.06).toFixed(3))
+    geographicProximityScore = Number((0.680 + (rng() - 0.5) * 0.06).toFixed(3))
+    finalProbability = Number((0.698 + (rng() - 0.5) * 0.04).toFixed(3))
+  } else if (isDemo && seed === 489201) {
+    // Exact standard numbers specified in prompt
+    temporalGraphScore = 0.682
+    geoTemporalScore = 0.814
+    historicalPatternScore = 0.748
+    transactionVelocityScore = 0.821
+    geographicProximityScore = 0.763
+    finalProbability = 0.874
+  } else if (isDemo) {
+    // Demo case regenerated with a custom seed (Requirement 8)
+    const jitter = (rng() - 0.5) * 0.08
+    temporalGraphScore = Number((0.682 + jitter * 0.7).toFixed(3))
+    geoTemporalScore = Number((0.814 + jitter * 0.4).toFixed(3))
+    historicalPatternScore = Number((0.748 + jitter * 0.5).toFixed(3))
+    transactionVelocityScore = Number((0.821 + jitter * 0.6).toFixed(3))
+    geographicProximityScore = Number((0.763 + jitter * 0.4).toFixed(3))
+    finalProbability = Number((0.874 + jitter).toFixed(3))
   } else {
-    // Scenario B / standard cases
-    temporalGraphScore = Number((0.60 + rng() * 0.15).toFixed(3))
-    geoTemporalScore = Number((0.68 + rng() * 0.16).toFixed(3))
-    historicalPatternScore = Number((0.62 + rng() * 0.18).toFixed(3))
-    transactionVelocityScore = Number((0.70 + rng() * 0.15).toFixed(3))
-    geographicProximityScore = Number((0.65 + rng() * 0.15).toFixed(3))
-    finalProbability = Number((0.65 + rng() * 0.18).toFixed(3))
+    // Non-demo cases: incorporate case attributes, hop topology & RNG
+    const caseNum = parseInt(caseData.id.slice(-2)) || 1
+    const baseProb = caseData.traceConfidence === 'HIGH' ? 0.78 : caseData.traceConfidence === 'MEDIUM' ? 0.65 : 0.42
+    const variance = (rng() - 0.5) * 0.05 + (caseNum % 7) * 0.025 - 0.05
+    finalProbability = Math.max(0.28, Math.min(0.92, Number((baseProb + variance).toFixed(3))))
+    temporalGraphScore = Number((finalProbability * 0.91 + (rng() - 0.5) * 0.03).toFixed(3))
+    geoTemporalScore = Number((finalProbability * 0.98 + (rng() - 0.5) * 0.03).toFixed(3))
+    historicalPatternScore = Number((finalProbability * 0.93 + (rng() - 0.5) * 0.03).toFixed(3))
+    transactionVelocityScore = Number((0.72 + (rng() - 0.5) * 0.08).toFixed(3))
+    geographicProximityScore = Number((0.69 + (rng() - 0.5) * 0.08).toFixed(3))
   }
 
   // Weight constants in the fusion ensemble
